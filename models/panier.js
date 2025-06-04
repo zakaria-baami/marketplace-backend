@@ -51,7 +51,7 @@ module.exports = (sequelize, DataTypes) => {
     }
   }, {
     tableName: 'paniers',
-    timestamps: true,
+    timestamps: false,
     underscored: true
   });
 

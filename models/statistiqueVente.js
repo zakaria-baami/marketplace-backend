@@ -31,8 +31,8 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.NOW
     }
   }, {
-    tableName: 'statistique_ventes',
-    timestamps: true,
+    tableName: 'statique_ventes',
+    timestamps: false,
     underscored: true,
     indexes: [
       {

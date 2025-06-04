@@ -1,123 +1,55 @@
-// middlewares/clientOnly.js
-const ApiResponse = require('../utils/apiResponse');
+// middlewares/clientOnly.js - Middleware pour vérifier le rôle client
+const { Client } = require('../models/db');
 
 /**
- * Middleware pour vérifier le rôle client
- * Doit être utilisé après le middleware auth
+ * Middleware pour vérifier que l'utilisateur est client
+ * À utiliser après le middleware auth
  */
-const clientOnly = (req, res, next) => {
+const clientOnly = async (req, res, next) => {
   try {
-    // Vérifier que l'utilisateur est authentifié
     if (!req.user) {
-      return ApiResponse.unauthorized(res, 'Authentification requise');
+      return res.status(401).json({
+        success: false,
+        message: 'Authentification requise'
+      });
     }
-    
-    // Vérifier le rôle client
+
     if (req.user.role !== 'client') {
-      return ApiResponse.forbidden(res, 'Accès réservé aux clients uniquement');
+      return res.status(403).json({
+        success: false,
+        message: 'Accès réservé aux clients',
+        role_requis: 'client',
+        role_actuel: req.user.role
+      });
     }
-    
-    // Ajouter des métadonnées pour le logging
-    req.clientAction = true;
-    req.clientId = req.user.id;
-    
+
+    // Vérifier que les données client existent
+    const client = await Client.findByPk(req.user.id);
+
+    if (!client) {
+      return res.status(403).json({
+        success: false,
+        message: 'Données client manquantes',
+        suggestion: 'Contactez le support technique'
+      });
+    }
+
+    // Ajouter les données client à req.user pour les contrôleurs
+    req.user.client = {
+      id: client.id,
+      adresse: client.adresse,
+      telephone: client.telephone
+    };
+
     next();
+
   } catch (error) {
-    console.error('Erreur dans le middleware clientOnly:', error);
-    return ApiResponse.error(res, 'Erreur de vérification des permissions', 500);
+    console.error('❌ Erreur middleware clientOnly:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur de vérification des droits client'
+    });
   }
 };
 
-/**
- * Middleware pour autoriser client OU admin
- * Utile pour les routes où l'admin peut aider les clients
- */
-const clientOrAdmin = (req, res, next) => {
-  try {
-    if (!req.user) {
-      return ApiResponse.unauthorized(res, 'Authentification requise');
-    }
-    
-    if (req.user.role !== 'client' && req.user.role !== 'admin') {
-      return ApiResponse.forbidden(res, 'Accès réservé aux clients et administrateurs');
-    }
-    
-    // Marquer le type d'utilisateur pour le contrôleur
-    req.isClient = req.user.role === 'client';
-    req.isAdmin = req.user.role === 'admin';
-    
-    next();
-  } catch (error) {
-    console.error('Erreur dans le middleware clientOrAdmin:', error);
-    return ApiResponse.error(res, 'Erreur de vérification des permissions', 500);
-  }
-};
-
-/**
- * Middleware pour vérifier qu'un client peut accéder à ses propres données
- * Le paramètre clientIdField indique quel champ contient l'ID du client
- */
-const ownClientDataOnly = (clientIdField = 'client_id') => {
-  return (req, res, next) => {
-    try {
-      if (!req.user) {
-        return ApiResponse.unauthorized(res, 'Authentification requise');
-      }
-      
-      // Si c'est un admin, autoriser l'accès
-      if (req.user.role === 'admin') {
-        req.isAdmin = true;
-        return next();
-      }
-      
-      // Vérifier que c'est un client
-      if (req.user.role !== 'client') {
-        return ApiResponse.forbidden(res, 'Accès réservé aux clients');
-      }
-      
-      // Le contrôleur devra vérifier que le client_id correspond à req.user.id
-      req.clientIdField = clientIdField;
-      req.mustCheckOwnership = true;
-      
-      next();
-    } catch (error) {
-      console.error('Erreur dans le middleware ownClientDataOnly:', error);
-      return ApiResponse.error(res, 'Erreur de vérification des permissions', 500);
-    }
-  };
-};
-
-/**
- * Middleware pour les actions sensibles des clients (comme passer commande)
- * Peut inclure des vérifications supplémentaires
- */
-const clientSensitiveAction = (req, res, next) => {
-  try {
-    if (!req.user) {
-      return ApiResponse.unauthorized(res, 'Authentification requise');
-    }
-    
-    if (req.user.role !== 'client') {
-      return ApiResponse.forbidden(res, 'Accès réservé aux clients');
-    }
-    
-    // Ajouter des vérifications supplémentaires si nécessaire
-    // Par exemple : vérifier que le compte client est activé, vérifié, etc.
-    
-    // Marquer comme action sensible pour le logging
-    req.sensitiveClientAction = true;
-    req.clientId = req.user.id;
-    
-    next();
-  } catch (error) {
-    console.error('Erreur dans le middleware clientSensitiveAction:', error);
-    return ApiResponse.error(res, 'Erreur de vérification des permissions', 500);
-  }
-};
-
-module.exports = {
-  clientOnly,
-  clientOrAdmin,
-  ownClientDataOnly,
-  clientSensitiveAction
-};
+module.exports = clientOnly;

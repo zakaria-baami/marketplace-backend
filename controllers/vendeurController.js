@@ -1,513 +1,675 @@
-// controllers/vendeurController.js
-const { Vendeur, Utilisateur, GradeVendeur, Boutique, Produit, StatistiqueVente, Panier, LignePanier } = require('../models');
-const ApiResponse = require('../utils/apiResponse');
-const { Op } = require('sequelize');
+// controllers/vendeurController.js - Contrôleur pour les vendeurs
+const { Vendeur, Boutique, Produit, Utilisateur, GradeVendeur ,
+ StatistiqueVente } = require('../models/db');
+const apiResponse = require('../utils/apiResponse');
+const { validationResult } = require('express-validator');
 
 class VendeurController {
+
+  // ==================== GESTION DU PROFIL ====================
+
   /**
-   * Récupérer le profil complet du vendeur connecté
+   * @desc    Obtenir le profil complet du vendeur
+   * @route   GET /api/vendeur/profil
+   * @access  Private (Vendeur)
    */
-  static async obtenirMonProfil(req, res) {
+  static async obtenirProfilComplet(req, res) {
     try {
-      const vendeur = await Vendeur.findByPk(req.user.id, {
+      console.log(`🔍 Récupération profil vendeur ${req.vendeur.id}`);
+
+      const result = await req.vendeur.obtenirProfilComplet();
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
+      }
+
+      return apiResponse.successResponseWithData(res, 'Profil récupéré avec succès', {
+        profil: result.profil
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur récupération profil:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la récupération du profil');
+    }
+  }
+
+  /**
+   * @desc    Mettre à jour les informations du vendeur
+   * @route   PUT /api/vendeur/profil
+   * @access  Private (Vendeur)
+   */
+  static async mettreAJourInformations(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return apiResponse.validationErrorWithData(res, 'Erreurs de validation', errors.array());
+      }
+
+      console.log(`🔄 Mise à jour profil vendeur ${req.vendeur.id}:`, req.body);
+
+      const result = await req.vendeur.mettreAJourInformations(req.body);
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
+      }
+
+      return apiResponse.successResponse(res, result.message);
+
+    } catch (error) {
+      console.error('❌ Erreur mise à jour profil:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la mise à jour du profil');
+    }
+  }
+
+  /**
+ * @desc    Obtenir le tableau de bord du vendeur
+ * @route   GET /api/vendeur/dashboard
+ * @access  Private (Vendeur)
+ */
+static async obtenirTableauDeBord(req, res) {
+  try {
+    console.log(`📊 Récupération dashboard vendeur ${req.vendeur.id}`);
+
+    // Récupérer les données avec Sequelize directement
+    const [boutiquesCount, produitsCount, statistiques] = await Promise.all([
+      // Compter les boutiques du vendeur
+      Boutique.count({
+        where: { vendeur_id: req.vendeur.id }
+      }),
+      
+      // Compter les produits du vendeur
+      Produit.count({
+        include: [{
+          model: Boutique,
+          as: 'boutique',
+          where: { vendeur_id: req.vendeur.id }
+        }]
+      }),
+      
+      // Récupérer les statistiques récentes
+      StatistiqueVente.findAll({
+        where: { vendeur_id: req.vendeur.id },
+        order: [['date', 'DESC']],
+        limit: 30
+      })
+    ]);
+
+    // Calculer les données du dashboard
+    const dashboard = {
+      statistiques_generales: {
+        boutiques: boutiquesCount,
+        produits: produitsCount,
+        commandes_totales: statistiques.reduce((sum, stat) => sum + stat.ventes, 0),
+        chiffre_affaires_total: statistiques.reduce((sum, stat) => sum + parseFloat(stat.chiffre_affaires), 0)
+      },
+      vendeur: {
+        id: req.vendeur.id,
+        nom: req.vendeur.utilisateur?.nom || req.user.nom,
+        email: req.vendeur.utilisateur?.email || req.user.email,
+        grade: req.vendeur.grade?.nom || 'Débutant'
+      },
+      statistiques_recentes: statistiques.slice(0, 7), // 7 derniers jours
+      alertes: {
+        nouvelles_commandes: 0, // À calculer selon vos besoins
+        stock_faible: 0 // À calculer selon vos besoins
+      }
+    };
+
+    return apiResponse.successResponseWithData(res, 'Tableau de bord récupéré avec succès', {
+      dashboard
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur récupération dashboard:', error.message);
+    return apiResponse.ErrorResponse(res, 'Erreur lors de la récupération du tableau de bord');
+  }
+}
+  // ==================== GESTION DES BOUTIQUES ====================
+static async creerBoutique(req, res) {
+  try {
+    const { nom, description } = req.body;
+    console.log(`🏪 Création boutique par vendeur ${req.vendeur.id}:`, req.body);
+
+    // Créer avec seulement les champs essentiels
+    const nouvelleBoutique = await Boutique.create({
+      vendeur_id: req.vendeur.id,
+      nom: nom,
+      description: description || '',
+      template_id: 1,           // Template qui existe
+      statut: 'active',         // Statut par défaut
+      nombre_visites: 0,        // Valeur par défaut
+      note_moyenne: 0.00,       // Valeur par défaut
+      nombre_ventes: 0          // Valeur par défaut
+    }, {
+      // Spécifier explicitement les champs à insérer
+      fields: ['vendeur_id', 'nom', 'description', 'template_id', 'statut', 'nombre_visites', 'note_moyenne', 'nombre_ventes']
+    });
+
+    console.log('✅ Boutique créée avec ID:', nouvelleBoutique.id);
+
+    return apiResponse.successResponseWithData(res, 'Boutique créée avec succès', {
+      boutique: nouvelleBoutique
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur création boutique:', error.message);
+    console.error('❌ Stack:', error.stack);
+    return apiResponse.ErrorResponse(res, 'Erreur lors de la création de la boutique');
+  }
+}
+
+  /**
+   * @desc    Lister toutes les boutiques du vendeur
+   * @route   GET /api/vendeur/boutiques
+   * @access  Private (Vendeur)
+   */
+  static async listerBoutiques(req, res) {
+    try {
+      console.log(`📋 Liste boutiques vendeur ${req.vendeur.id}`);
+
+      const boutiques = await req.vendeur.getBoutiques({
         include: [
-          { 
-            model: Utilisateur, 
-            as: 'utilisateur',
-            attributes: { exclude: ['password'] }
-          },
-          { model: GradeVendeur, as: 'grade' },
-          { 
-            model: Boutique, 
-            as: 'boutiques',
-            include: [{ model: Produit, as: 'produits' }]
+          {
+            model: Produit,
+            as: 'produits',
+            attributes: ['id', 'nom', 'prix', 'stock']
           }
-        ]
+        ],
+        order: [['created_at', 'DESC']]
       });
 
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
-      }
+      const boutiquesFormatted = boutiques.map(boutique => ({
+        id: boutique.id,
+        nom: boutique.nom,
+        description: boutique.description,
+        template_id: boutique.template_id,
+        nombre_produits: boutique.produits.length,
+        produits_en_stock: boutique.produits.filter(p => p.stock > 0).length,
+        created_at: boutique.created_at,
+        updated_at: boutique.updated_at
+      }));
 
-      return ApiResponse.success(res, vendeur);
+      return apiResponse.successResponseWithData(res, 'Boutiques récupérées avec succès', {
+        boutiques: boutiquesFormatted,
+        total: boutiques.length
+      });
 
     } catch (error) {
-      console.error('Erreur récupération profil vendeur:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération du profil', 500);
+      console.error('❌ Erreur liste boutiques:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la récupération des boutiques');
     }
   }
 
   /**
-   * Mettre à jour les informations du vendeur
+   * @desc    Obtenir une boutique spécifique
+   * @route   GET /api/vendeur/boutiques/:boutiqueId
+   * @access  Private (Vendeur)
    */
-  static async mettreAJourProfil(req, res) {
+  static async obtenirBoutique(req, res) {
     try {
-      const { numero_fiscal } = req.body;
+      const { boutiqueId } = req.params;
+      console.log(`🔍 Récupération boutique ${boutiqueId} par vendeur ${req.vendeur.id}`);
 
-      const vendeur = await Vendeur.findByPk(req.user.id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
+      const result = await req.vendeur.obtenirBoutique(parseInt(boutiqueId));
+
+      if (!result.success) {
+        return apiResponse.notFoundResponse(res, result.message);
       }
 
-      await vendeur.update({ numero_fiscal });
-
-      const vendeurMisAJour = await Vendeur.findByPk(req.user.id, {
-        include: [
-          { 
-            model: Utilisateur, 
-            as: 'utilisateur',
-            attributes: { exclude: ['password'] }
-          },
-          { model: GradeVendeur, as: 'grade' }
-        ]
+      return apiResponse.successResponseWithData(res, 'Boutique récupérée avec succès', {
+        boutique: result.boutique
       });
 
-      return ApiResponse.updated(res, vendeurMisAJour);
-
     } catch (error) {
-      console.error('Erreur mise à jour profil vendeur:', error);
-      return ApiResponse.error(res, 'Erreur lors de la mise à jour du profil', 500);
+      console.error('❌ Erreur récupération boutique:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la récupération de la boutique');
     }
   }
 
   /**
-   * Créer une nouvelle boutique
+   * @desc    Modifier une boutique
+   * @route   PUT /api/vendeur/boutiques/:boutiqueId
+   * @access  Private (Vendeur)
    */
-  static async genererBoutique(req, res) {
+  static async modifierBoutique(req, res) {
     try {
-      const { nom, description, logo, banniere, template_id } = req.body;
-
-      const vendeur = await Vendeur.findByPk(req.user.id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return apiResponse.validationErrorWithData(res, 'Erreurs de validation', errors.array());
       }
 
-      const resultat = await vendeur.genererBoutique({
-        nom,
-        description,
-        logo,
-        banniere,
-        template_id
+      const { boutiqueId } = req.params;
+      console.log(`🔄 Modification boutique ${boutiqueId}:`, req.body);
+
+      const result = await req.vendeur.modifierBoutique(parseInt(boutiqueId), req.body);
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
+      }
+
+      return apiResponse.successResponseWithData(res, result.message, {
+        boutique: result.boutique
       });
 
-      if (!resultat.success) {
-        return ApiResponse.error(res, resultat.message, 400);
-      }
-
-      return ApiResponse.created(res, resultat.boutique, resultat.message);
-
     } catch (error) {
-      console.error('Erreur création boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la création de la boutique', 500);
+      console.error('❌ Erreur modification boutique:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la modification de la boutique');
     }
   }
 
   /**
-   * Ajouter un produit dans une boutique
+   * @desc    Supprimer une boutique
+   * @route   DELETE /api/vendeur/boutiques/:boutiqueId
+   * @access  Private (Vendeur)
+   */
+  static async supprimerBoutique(req, res) {
+    try {
+      const { boutiqueId } = req.params;
+      console.log(`🗑️ Suppression boutique ${boutiqueId} par vendeur ${req.vendeur.id}`);
+
+      // Vérifier que la boutique appartient au vendeur
+      const boutique = await Boutique.findOne({
+        where: {
+          id: boutiqueId,
+          vendeur_id: req.vendeur.id
+        },
+        include: [{
+          model: Produit,
+          as: 'produits'
+        }]
+      });
+
+      if (!boutique) {
+        return apiResponse.notFoundResponse(res, 'Boutique non trouvée');
+      }
+
+      // Vérifier s'il y a des produits
+      if (boutique.produits.length > 0) {
+        return apiResponse.ErrorResponse(res, 'Impossible de supprimer une boutique contenant des produits');
+      }
+
+      await boutique.destroy();
+
+      return apiResponse.successResponse(res, 'Boutique supprimée avec succès');
+
+    } catch (error) {
+      console.error('❌ Erreur suppression boutique:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la suppression de la boutique');
+    }
+  }
+
+  // ==================== GESTION DES PRODUITS ====================
+
+  /**
+   * @desc    Ajouter un produit à une boutique
+   * @route   POST /api/vendeur/produits
+   * @access  Private (Vendeur)
    */
   static async ajouterProduit(req, res) {
     try {
-      const { boutique_id, nom, description, prix, stock, categorie_id, images } = req.body;
-
-      const vendeur = await Vendeur.findByPk(req.user.id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return apiResponse.validationErrorWithData(res, 'Erreurs de validation', errors.array());
       }
 
-      const resultat = await vendeur.ajouterProduit({
-        boutique_id,
-        nom,
-        description,
-        prix,
-        stock,
-        categorie_id,
-        images
+      console.log(`📦 Ajout produit par vendeur ${req.vendeur.id}:`, req.body);
+
+      const result = await req.vendeur.ajouterProduit(req.body);
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
+      }
+
+      return apiResponse.createdResponse(res, result.message, {
+        produit: result.produit
       });
 
-      if (!resultat.success) {
-        return ApiResponse.error(res, resultat.message, 400);
-      }
-
-      return ApiResponse.created(res, resultat.produit, resultat.message);
-
     } catch (error) {
-      console.error('Erreur ajout produit:', error);
-      return ApiResponse.error(res, 'Erreur lors de l\'ajout du produit', 500);
+      console.error('❌ Erreur ajout produit:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de l\'ajout du produit');
     }
   }
 
   /**
-   * Modifier un produit
+   * @desc    Lister tous les produits du vendeur
+   * @route   GET /api/vendeur/produits
+   * @access  Private (Vendeur)
+   */
+  static async listerProduits(req, res) {
+    try {
+      const { boutique_id, limit = 50, offset = 0 } = req.query;
+      
+      console.log(`📋 Liste produits vendeur ${req.vendeur.id}`, { boutique_id, limit, offset });
+
+      const whereClause = {};
+      if (boutique_id) {
+        whereClause.boutique_id = boutique_id;
+      }
+
+      const produits = await Produit.findAndCountAll({
+        where: whereClause,
+        include: [{
+          model: Boutique,
+          as: 'boutique',
+          where: { vendeur_id: req.vendeur.id },
+          attributes: ['id', 'nom']
+        }],
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        order: [['created_at', 'DESC']]
+      });
+
+      return apiResponse.successResponseWithData(res, 'Produits récupérés avec succès', {
+        produits: produits.rows,
+        pagination: {
+          total: produits.count,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          pages: Math.ceil(produits.count / limit)
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur liste produits:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la récupération des produits');
+    }
+  }
+
+  /**
+   * @desc    Obtenir un produit spécifique
+   * @route   GET /api/vendeur/produits/:produitId
+   * @access  Private (Vendeur)
+   */
+  static async obtenirProduit(req, res) {
+    try {
+      const { produitId } = req.params;
+      console.log(`🔍 Récupération produit ${produitId} par vendeur ${req.vendeur.id}`);
+
+      const produit = await Produit.findOne({
+        where: { id: produitId },
+        include: [{
+          model: Boutique,
+          as: 'boutique',
+          where: { vendeur_id: req.vendeur.id }
+        }]
+      });
+
+      if (!produit) {
+        return apiResponse.notFoundResponse(res, 'Produit non trouvé');
+      }
+
+      return apiResponse.successResponseWithData(res, 'Produit récupéré avec succès', {
+        produit
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur récupération produit:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la récupération du produit');
+    }
+  }
+
+  /**
+   * @desc    Modifier un produit
+   * @route   PUT /api/vendeur/produits/:produitId
+   * @access  Private (Vendeur)
    */
   static async modifierProduit(req, res) {
     try {
-      const { produit_id } = req.params;
-      const { nom, description, prix, stock, categorie_id, images } = req.body;
-
-      const vendeur = await Vendeur.findByPk(req.user.id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return apiResponse.validationErrorWithData(res, 'Erreurs de validation', errors.array());
       }
 
-      const resultat = await vendeur.modifierProduit(produit_id, {
-        nom,
-        description,
-        prix,
-        stock,
-        categorie_id,
-        images
+      const { produitId } = req.params;
+      console.log(`🔄 Modification produit ${produitId}:`, req.body);
+
+      const result = await req.vendeur.modifierProduit(parseInt(produitId), req.body);
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
+      }
+
+      return apiResponse.successResponseWithData(res, result.message, {
+        produit: result.produit
       });
 
-      if (!resultat.success) {
-        return ApiResponse.error(res, resultat.message, 400);
-      }
-
-      return ApiResponse.updated(res, resultat.produit, resultat.message);
-
     } catch (error) {
-      console.error('Erreur modification produit:', error);
-      return ApiResponse.error(res, 'Erreur lors de la modification du produit', 500);
+      console.error('❌ Erreur modification produit:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la modification du produit');
     }
   }
 
   /**
-   * Supprimer un produit
+   * @desc    Supprimer un produit
+   * @route   DELETE /api/vendeur/produits/:produitId
+   * @access  Private (Vendeur)
    */
   static async supprimerProduit(req, res) {
     try {
-      const { produit_id } = req.params;
+      const { produitId } = req.params;
+      console.log(`🗑️ Suppression produit ${produitId} par vendeur ${req.vendeur.id}`);
 
-      const vendeur = await Vendeur.findByPk(req.user.id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
+      const result = await req.vendeur.supprimerProduit(parseInt(produitId));
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
       }
 
-      const resultat = await vendeur.supprimerProduit(produit_id);
-
-      if (!resultat.success) {
-        return ApiResponse.error(res, resultat.message, 400);
-      }
-
-      return ApiResponse.deleted(res, resultat.message);
+      return apiResponse.successResponse(res, result.message);
 
     } catch (error) {
-      console.error('Erreur suppression produit:', error);
-      return ApiResponse.error(res, 'Erreur lors de la suppression du produit', 500);
+      console.error('❌ Erreur suppression produit:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la suppression du produit');
     }
   }
 
   /**
-   * Vérifier le stock de tous les produits
+   * @desc    Vérifier le stock de tous les produits
+   * @route   GET /api/vendeur/stock
+   * @access  Private (Vendeur)
    */
   static async verifierStock(req, res) {
     try {
       const { seuil_critique = 5 } = req.query;
+      console.log(`📊 Vérification stock vendeur ${req.vendeur.id}, seuil: ${seuil_critique}`);
 
-      const vendeur = await Vendeur.findByPk(req.user.id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
+      const result = await req.vendeur.verifierStock(parseInt(seuil_critique));
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
       }
 
-      const resultat = await vendeur.verifierStock(parseInt(seuil_critique));
-
-      if (!resultat.success) {
-        return ApiResponse.error(res, resultat.message, 400);
-      }
-
-      return ApiResponse.success(res, resultat.rapport, 'Rapport de stock généré');
-
-    } catch (error) {
-      console.error('Erreur vérification stock:', error);
-      return ApiResponse.error(res, 'Erreur lors de la vérification du stock', 500);
-    }
-  }
-
-  /**
-   * Changer de grade
-   */
-  static async changerGrade(req, res) {
-    try {
-      const { nouveau_grade_id } = req.body;
-
-      if (!nouveau_grade_id) {
-        return ApiResponse.validationError(res, [
-          { field: 'nouveau_grade_id', message: 'L\'ID du nouveau grade est requis' }
-        ]);
-      }
-
-      const vendeur = await Vendeur.findByPk(req.user.id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
-      }
-
-      const resultat = await vendeur.changerGradeNouveauGrade(nouveau_grade_id);
-
-      if (!resultat.success) {
-        return ApiResponse.error(res, resultat.message, 400);
-      }
-
-      return ApiResponse.updated(res, resultat.nouveau_grade, resultat.message);
-
-    } catch (error) {
-      console.error('Erreur changement grade:', error);
-      return ApiResponse.error(res, 'Erreur lors du changement de grade', 500);
-    }
-  }
-
-  /**
-   * Mettre à jour les statistiques de vente
-   */
-  static async mettreAJourStatistiques(req, res) {
-    try {
-      const { montant_vente } = req.body;
-
-      if (!montant_vente || montant_vente <= 0) {
-        return ApiResponse.validationError(res, [
-          { field: 'montant_vente', message: 'Le montant de vente doit être supérieur à 0' }
-        ]);
-      }
-
-      const vendeur = await Vendeur.findByPk(req.user.id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
-      }
-
-      const resultat = await vendeur.mettreAJourStatistiques(montant_vente);
-
-      if (!resultat.success) {
-        return ApiResponse.error(res, resultat.message, 400);
-      }
-
-      return ApiResponse.success(res, null, resultat.message);
-
-    } catch (error) {
-      console.error('Erreur mise à jour statistiques:', error);
-      return ApiResponse.error(res, 'Erreur lors de la mise à jour des statistiques', 500);
-    }
-  }
-
-  /**
-   * Vérifier si le vendeur peut être promu
-   */
-  static async verifierPromotionGrade(req, res) {
-    try {
-      const vendeur = await Vendeur.findByPk(req.user.id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
-      }
-
-      const resultat = await vendeur.verifierPromotionGrade();
-
-      return ApiResponse.success(res, {
-        peut_etre_promu: resultat.success,
-        message: resultat.message,
-        nouveau_grade: resultat.nouveau_grade || null
+      return apiResponse.successResponseWithData(res, 'Rapport de stock généré avec succès', {
+        rapport: result.rapport
       });
 
     } catch (error) {
-      console.error('Erreur vérification promotion:', error);
-      return ApiResponse.error(res, 'Erreur lors de la vérification de promotion', 500);
+      console.error('❌ Erreur vérification stock:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la vérification du stock');
     }
   }
 
-  /**
-   * Obtenir le tableau de bord du vendeur
-   */
-  static async obtenirTableauDeBord(req, res) {
-    try {
-      const vendeur = await Vendeur.findByPk(req.user.id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Profil vendeur non trouvé');
-      }
-
-      const resultat = await vendeur.obtenirTableauDeBord();
-
-      if (!resultat.success) {
-        return ApiResponse.error(res, resultat.message, 400);
-      }
-
-      return ApiResponse.success(res, resultat.tableau_de_bord, 'Tableau de bord récupéré');
-
-    } catch (error) {
-      console.error('Erreur tableau de bord:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération du tableau de bord', 500);
-    }
-  }
+  // ==================== GESTION DES COMMANDES ====================
 
   /**
-   * Lister tous les vendeurs (admin uniquement)
+   * @desc    Lister les paniers validés (commandes)
+   * @route   GET /api/vendeur/commandes
+   * @access  Private (Vendeur)
    */
-  static async listerVendeurs(req, res) {
+  static async listerCommandes(req, res) {
     try {
-      const { page = 1, limit = 10, grade_id, search } = req.query;
-      const offset = (page - 1) * limit;
-
-      const whereClause = {};
-      if (grade_id) whereClause.grade_id = grade_id;
-
-      const includeClause = [
-        { 
-          model: Utilisateur, 
-          as: 'utilisateur',
-          attributes: { exclude: ['password'] },
-          ...(search && {
-            where: {
-              [Op.or]: [
-                { nom: { [Op.like]: `%${search}%` } },
-                { email: { [Op.like]: `%${search}%` } }
-              ]
-            }
-          })
-        },
-        { model: GradeVendeur, as: 'grade' },
-        { model: Boutique, as: 'boutiques' }
-      ];
-
-      const { count, rows } = await Vendeur.findAndCountAll({
-        where: whereClause,
-        include: includeClause,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        order: [['createdAt', 'DESC']]
-      });
-
-      return ApiResponse.paginated(res, rows, {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count
-      });
-
-    } catch (error) {
-      console.error('Erreur liste vendeurs:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des vendeurs', 500);
-    }
-  }
-
-  /**
-   * Obtenir un vendeur par ID (admin uniquement)
-   */
-  static async obtenirVendeur(req, res) {
-    try {
-      const { id } = req.params;
-
-      const vendeur = await Vendeur.findByPk(id, {
-        include: [
-          { 
-            model: Utilisateur, 
-            as: 'utilisateur',
-            attributes: { exclude: ['password'] }
-          },
-          { model: GradeVendeur, as: 'grade' },
-          { 
-            model: Boutique, 
-            as: 'boutiques',
-            include: [{ model: Produit, as: 'produits' }]
-          }
-        ]
-      });
-
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Vendeur non trouvé');
-      }
-
-      return ApiResponse.success(res, vendeur);
-
-    } catch (error) {
-      console.error('Erreur récupération vendeur:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération du vendeur', 500);
-    }
-  }
-
-  /**
-   * Modifier le grade d'un vendeur (admin uniquement)
-   */
-  static async modifierGradeVendeur(req, res) {
-    try {
-      const { id } = req.params;
-      const { nouveau_grade_id } = req.body;
-
-      if (!nouveau_grade_id) {
-        return ApiResponse.validationError(res, [
-          { field: 'nouveau_grade_id', message: 'L\'ID du nouveau grade est requis' }
-        ]);
-      }
-
-      const vendeur = await Vendeur.findByPk(id);
-      if (!vendeur) {
-        return ApiResponse.notFound(res, 'Vendeur non trouvé');
-      }
-
-      // Vérifier que le grade existe
-      const grade = await GradeVendeur.findByPk(nouveau_grade_id);
-      if (!grade) {
-        return ApiResponse.notFound(res, 'Grade non trouvé');
-      }
-
-      await vendeur.update({ grade_id: nouveau_grade_id });
-
-      const vendeurMisAJour = await Vendeur.findByPk(id, {
-        include: [
-          { model: Utilisateur, as: 'utilisateur', attributes: { exclude: ['password'] } },
-          { model: GradeVendeur, as: 'grade' }
-        ]
-      });
-
-      return ApiResponse.updated(res, vendeurMisAJour, `Grade modifié vers ${grade.nom}`);
-
-    } catch (error) {
-      console.error('Erreur modification grade vendeur:', error);
-      return ApiResponse.error(res, 'Erreur lors de la modification du grade', 500);
-    }
-  }
-
-  /**
-   * Statistiques générales des vendeurs (admin uniquement)
-   */
-  static async statistiquesVendeurs(req, res) {
-    try {
-      const totalVendeurs = await Vendeur.count();
+      const { statut, date_debut, date_fin, limit = 50 } = req.query;
       
-      // Répartition par grade
-      const vendeurs = await Vendeur.findAll({
-        include: [{ model: GradeVendeur, as: 'grade' }]
-      });
+      console.log(`📋 Liste commandes vendeur ${req.vendeur.id}`, { statut, date_debut, date_fin });
 
-      const repartitionGrades = {};
-      vendeurs.forEach(vendeur => {
-        const gradeName = vendeur.grade?.nom || 'Sans grade';
-        repartitionGrades[gradeName] = (repartitionGrades[gradeName] || 0) + 1;
-      });
+      const options = {
+        limit: parseInt(limit)
+      };
 
-      // Vendeurs avec boutiques
-      const vendeursAvecBoutique = await Vendeur.count({
-        include: [{ model: Boutique, as: 'boutiques', required: true }]
-      });
+      if (statut) options.statut = statut;
+      if (date_debut && date_fin) {
+        options.dateDebut = date_debut;
+        options.dateFin = date_fin;
+      }
 
-      // Nouveaux vendeurs des 30 derniers jours
-      const dateLimite = new Date();
-      dateLimite.setDate(dateLimite.getDate() - 30);
-      
-      const nouveauxVendeurs = await Vendeur.count({
-        where: {
-          createdAt: {
-            [Op.gte]: dateLimite
-          }
-        }
-      });
+      const result = await req.vendeur.listerPaniersValidés(options);
 
-      return ApiResponse.success(res, {
-        total_vendeurs: totalVendeurs,
-        vendeurs_avec_boutique: vendeursAvecBoutique,
-        vendeurs_sans_boutique: totalVendeurs - vendeursAvecBoutique,
-        nouveaux_vendeurs_30j: nouveauxVendeurs,
-        repartition_par_grade: repartitionGrades
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
+      }
+
+      return apiResponse.successResponseWithData(res, 'Commandes récupérées avec succès', {
+        commandes: result.paniers,
+        total: result.paniers.length
       });
 
     } catch (error) {
-      console.error('Erreur statistiques vendeurs:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des statistiques', 500);
+      console.error('❌ Erreur liste commandes:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la récupération des commandes');
+    }
+  }
+
+  /**
+   * @desc    Modifier le statut d'une commande
+   * @route   PUT /api/vendeur/commandes/:panierId/statut
+   * @access  Private (Vendeur)
+   */
+  static async modifierStatutCommande(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return apiResponse.validationErrorWithData(res, 'Erreurs de validation', errors.array());
+      }
+
+      const { panierId } = req.params;
+      const { statut } = req.body;
+      
+      console.log(`🔄 Modification statut commande ${panierId} vers ${statut}`);
+
+      const result = await req.vendeur.modifierStatutPanier(parseInt(panierId), statut);
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
+      }
+
+      return apiResponse.successResponse(res, result.message);
+
+    } catch (error) {
+      console.error('❌ Erreur modification statut:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la modification du statut');
+    }
+  }
+
+  // ==================== GRADES ET STATISTIQUES ====================
+// À ajouter à la fin de votre fichier controllers/vendeurController.js
+
+  /**
+   * @desc    Demander une promotion de grade
+   * @route   POST /api/vendeur/grade/promotion
+   * @access  Private (Vendeur)
+   */
+  static async demanderPromotionGrade(req, res) {
+    try {
+      console.log(`⭐ Demande promotion grade vendeur ${req.vendeur.id}`);
+
+      const result = await req.vendeur.demanderPromotionGrade();
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
+      }
+
+      return apiResponse.successResponseWithData(res, result.message, {
+        demande: result.demande
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur demande promotion:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la demande de promotion');
+    }
+  }
+
+  /**
+   * @desc    Obtenir les statistiques de vente
+   * @route   GET /api/vendeur/statistiques
+   * @access  Private (Vendeur)
+   */
+  static async obtenirStatistiques(req, res) {
+    try {
+      const { periode = 'mois', date_debut, date_fin } = req.query;
+      
+      console.log(`📊 Statistiques vendeur ${req.vendeur.id}`, { periode, date_debut, date_fin });
+
+      const options = { periode };
+      if (date_debut && date_fin) {
+        options.dateDebut = date_debut;
+        options.dateFin = date_fin;
+      }
+
+      const result = await req.vendeur.obtenirStatistiques(options);
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
+      }
+
+      return apiResponse.successResponseWithData(res, 'Statistiques récupérées avec succès', {
+        statistiques: result.statistiques
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur récupération statistiques:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la récupération des statistiques');
+    }
+  }
+
+  /**
+   * @desc    Obtenir les informations sur le grade actuel
+   * @route   GET /api/vendeur/grade
+   * @access  Private (Vendeur)
+   */
+  static async obtenirInfosGrade(req, res) {
+    try {
+      console.log(`⭐ Infos grade vendeur ${req.vendeur.id}`);
+
+      const result = await req.vendeur.obtenirInfosGrade();
+
+      if (!result.success) {
+        return apiResponse.ErrorResponse(res, result.message);
+      }
+
+      return apiResponse.successResponseWithData(res, 'Informations de grade récupérées avec succès', {
+        grade: result.grade
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur récupération grade:', error.message);
+      return apiResponse.ErrorResponse(res, 'Erreur lors de la récupération des informations de grade');
     }
   }
 }
 
-module.exports = VendeurController;
+// ==================== EXPORT CORRIGÉ ====================
+
+// Export comme objet avec méthodes (compatible avec vos routes)
+const vendeurController = {
+  obtenirProfilComplet: VendeurController.obtenirProfilComplet,
+  mettreAJourInformations: VendeurController.mettreAJourInformations,
+  obtenirTableauDeBord: VendeurController.obtenirTableauDeBord,
+  creerBoutique: VendeurController.creerBoutique,
+  listerBoutiques: VendeurController.listerBoutiques,
+  obtenirBoutique: VendeurController.obtenirBoutique,
+  modifierBoutique: VendeurController.modifierBoutique,
+  supprimerBoutique: VendeurController.supprimerBoutique,
+  ajouterProduit: VendeurController.ajouterProduit,
+  listerProduits: VendeurController.listerProduits,
+  obtenirProduit: VendeurController.obtenirProduit,
+  modifierProduit: VendeurController.modifierProduit,
+  supprimerProduit: VendeurController.supprimerProduit,
+  verifierStock: VendeurController.verifierStock,
+  listerCommandes: VendeurController.listerCommandes,
+  modifierStatutCommande: VendeurController.modifierStatutCommande,
+  demanderPromotionGrade: VendeurController.demanderPromotionGrade,
+  obtenirStatistiques: VendeurController.obtenirStatistiques,
+  obtenirInfosGrade: VendeurController.obtenirInfosGrade
+};
+
+module.exports = vendeurController;

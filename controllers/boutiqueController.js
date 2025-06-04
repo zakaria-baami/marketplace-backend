@@ -1,21 +1,45 @@
-// controllers/boutiqueController.js
-const { Boutique, Vendeur, Template, Produit, Categorie, ImageProduit } = require('../models');
-const ApiResponse = require('../utils/apiResponse');
+// controllers/boutiqueController.js - Conforme aux web services
+const fs = require('fs').promises;
+const path = require('path');
+const { 
+  Boutique,
+  Vendeur, 
+  Utilisateur,
+  GradeVendeur,
+  Template,
+  Produit,
+  Categorie,
+  ImageProduit,
+  Commande,
+  CommandeProduit,
+  StatistiqueVente,
+  Client
+} = require('../models/db');
 const { Op } = require('sequelize');
 
 class BoutiqueController {
+
+  // ==================== ROUTES PRINCIPALES WEB SERVICES ====================
+
   /**
-   * Créer une nouvelle boutique
+   * @desc    Créer une boutique
+   * @route   POST /api/boutiques
+   * @access  Private (Vendeur uniquement)
+   * @body    { nom, description, template_id }
+   * @response { success, message, boutique }
    */
-  static async creerBoutique(req, res) {
+  static async createBoutique(req, res) {
     try {
+      console.log('🏪 Création boutique par vendeur:', req.user.id);
+
       const { nom, description, template_id } = req.body;
 
-      // Validation
-      if (!nom) {
-        return ApiResponse.validationError(res, [
-          { field: 'nom', message: 'Le nom de la boutique est requis' }
-        ]);
+      // Validation des données
+      if (!nom || !template_id) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nom et template sont requis'
+        });
       }
 
       // Vérifier si le vendeur a déjà une boutique
@@ -24,1801 +48,1217 @@ class BoutiqueController {
       });
 
       if (boutiqueExistante) {
-        return ApiResponse.error(res, 'Vous avez déjà une boutique', 409);
+        return res.status(409).json({
+          success: false,
+          message: 'Vous avez déjà une boutique',
+          boutique_existante: {
+            id: boutiqueExistante.id,
+            nom: boutiqueExistante.nom
+          }
+        });
       }
 
-      // Vérifier que le template existe et est compatible avec le grade du vendeur
-      const vendeur = await Vendeur.findByPk(req.user.id, {
-        include: ['grade']
+      // Vérifier que le template existe et est accessible
+      const template = await Template.findByPk(template_id, {
+        include: [{
+          model: GradeVendeur,
+          as: 'gradeRequis'
+        }]
       });
 
-      if (template_id) {
-        const template = await Template.findByPk(template_id);
-        if (!template) {
-          return ApiResponse.notFound(res, 'Template non trouvé');
-        }
+      if (!template) {
+        return res.status(404).json({
+          success: false,
+          message: 'Template non trouvé'
+        });
+      }
 
-        if (template.grade_requis_id > vendeur.grade_id) {
-          return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-        }
+      // Vérifier le grade du vendeur
+      const vendeur = await Vendeur.findByPk(req.user.id, {
+        include: [{
+          model: GradeVendeur,
+          as: 'grade'
+        }]
+      });
+
+      if (!template.estAccessiblePourGrade(vendeur.grade_id)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Ce template nécessite un grade supérieur',
+          grade_requis: template.gradeRequis?.nom,
+          grade_actuel: vendeur.grade?.nom
+        });
       }
 
       // Créer la boutique
       const boutique = await Boutique.create({
         vendeur_id: req.user.id,
-        nom,
-        description,
-        template_id: template_id || 1 // Template par défaut
+        nom: nom.trim(),
+        description: description?.trim() || '',
+        template_id
       });
 
-      // Récupérer la boutique avec ses relations
-      const boutiqueComplete = await Boutique.findByPk(boutique.id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] }
-        ]
-      });
+      console.log('✅ Boutique créée:', boutique.id);
 
-      return ApiResponse.created(res, boutiqueComplete, 'Boutique créée avec succès');
-
-    } catch (error) {
-      console.error('Erreur création boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la création de la boutique', 500);
-    }
-  }
-
-  /**
-   * Récupérer sa propre boutique (vendeur)
-   */
-  static async obtenirMaBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id },
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] },
-          { 
-            model: Produit, 
-            as: 'produits',
-            include: [
-              { model: Categorie, as: 'categorie' },
-              { model: ImageProduit, as: 'images' }
-            ]
-          }
-        ]
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      return ApiResponse.success(res, boutique);
-
-    } catch (error) {
-      console.error('Erreur récupération boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération de la boutique', 500);
-    }
-  }
-
-  /**
-   * Récupérer une boutique publique par ID
-   */
-  static async obtenirBoutique(req, res) {
-    try {
-      const { id } = req.params;
-
-      const boutique = await Boutique.findByPk(id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] },
-          { 
-            model: Produit, 
-            as: 'produits',
-            where: { stock: { [Op.gt]: 0 } }, // Seulement les produits en stock
-            required: false,
-            include: [
-              { model: Categorie, as: 'categorie' },
-              { model: ImageProduit, as: 'images' }
-            ]
-          }
-        ]
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Boutique non trouvée');
-      }
-
-      return ApiResponse.success(res, boutique);
-
-    } catch (error) {
-      console.error('Erreur récupération boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération de la boutique', 500);
-    }
-  }
-
-  /**
-   * Lister toutes les boutiques publiques
-   */
-  static async listerBoutiques(req, res) {
-    try {
-      const { page = 1, limit = 12, search, grade } = req.query;
-      const offset = (page - 1) * limit;
-
-      const whereClause = {};
-      if (search) {
-        whereClause[Op.or] = [
-          { nom: { [Op.like]: `%${search}%` } },
-          { description: { [Op.like]: `%${search}%` } }
-        ];
-      }
-
-      const includeClause = [
-        { model: Template, as: 'template' },
-        { 
-          model: Vendeur, 
-          as: 'vendeur', 
-          include: ['grade'],
-          ...(grade && { where: { grade_id: grade } })
-        }
-      ];
-
-      const { count, rows } = await Boutique.findAndCountAll({
-        where: whereClause,
-        include: includeClause,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        order: [['createdAt', 'DESC']]
-      });
-
-      return ApiResponse.paginated(res, rows, {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count
-      });
-
-    } catch (error) {
-      console.error('Erreur liste boutiques:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des boutiques', 500);
-    }
-  }
-
-  /**
-   * Mettre à jour sa boutique
-   */
-  static async mettreAJourBoutique(req, res) {
-    try {
-      const { nom, description, template_id } = req.body;
-
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Vérifier le template si fourni
-      if (template_id) {
-        const vendeur = await Vendeur.findByPk(req.user.id, {
-          include: ['grade']
-        });
-
-        const template = await Template.findByPk(template_id);
-        if (!template) {
-          return ApiResponse.notFound(res, 'Template non trouvé');
-        }
-
-        if (template.grade_requis_id > vendeur.grade_id) {
-          return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-        }
-      }
-
-      // Mettre à jour la boutique
-      await boutique.update({
-        nom: nom || boutique.nom,
-        description: description || boutique.description,
-        template_id: template_id || boutique.template_id
-      });
-
-      // Récupérer la boutique mise à jour
-      const boutiqueMiseAJour = await Boutique.findByPk(boutique.id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] }
-        ]
-      });
-
-      return ApiResponse.updated(res, boutiqueMiseAJour);
-
-    } catch (error) {
-      console.error('Erreur mise à jour boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la mise à jour de la boutique', 500);
-    }
-  }
-
-  /**
-   * Supprimer sa boutique
-   */
-  static async supprimerBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      await boutique.destroy();
-      return ApiResponse.deleted(res, 'Boutique supprimée avec succès');
-
-    } catch (error) {
-      console.error('Erreur suppression boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la suppression de la boutique', 500);
-    }
-  }
-
-  /**
-   * Changer le template de sa boutique
-   */
-  static async changerTemplate(req, res) {
-    try {
-      const { template_id } = req.body;
-
-      if (!template_id) {
-        return ApiResponse.validationError(res, [
-          { field: 'template_id', message: 'L\'ID du template est requis' }
-        ]);
-      }
-
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Vérifier le grade requis pour le template
-      const vendeur = await Vendeur.findByPk(req.user.id, {
-        include: ['grade']
-      });
-
-      const template = await Template.findByPk(template_id);
-      if (!template) {
-        return ApiResponse.notFound(res, 'Template non trouvé');
-      }
-
-      if (template.grade_requis_id > vendeur.grade_id) {
-        return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-      }
-
-      await boutique.update({ template_id });
-
-      const boutiqueMiseAJour = await Boutique.findByPk(boutique.id, {
-        include: [{ model: Template, as: 'template' }]
-      });
-
-      return ApiResponse.updated(res, boutiqueMiseAJour, 'Template mis à jour avec succès');
-
-    } catch (error) {
-      console.error('Erreur changement template:', error);
-      return ApiResponse.error(res, 'Erreur lors du changement de template', 500);
-    }
-  }
-
-  /**
-   * Obtenir les statistiques de sa boutique
-   */
-  static async statistiquesBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Compter les produits
-      const totalProduits = await Produit.count({
-        where: { boutique_id: boutique.id }
-      });
-
-      const produitsEnStock = await Produit.count({
-        where: { 
-          boutique_id: boutique.id,
-          stock: { [Op.gt]: 0 }
-        }
-      });
-
-      const produitsRupture = totalProduits - produitsEnStock;
-
-      // Calculer la valeur totale du stock
-      const produits = await Produit.findAll({
-        where: { boutique_id: boutique.id },
-        attributes: ['prix', 'stock']
-      });
-
-      const valeurStock = produits.reduce((total, produit) => {
-        return total + (produit.prix * produit.stock);
-      }, 0);
-
-      return ApiResponse.success(res, {
-        total_produits: totalProduits,
-        produits_en_stock: produitsEnStock,
-        produits_rupture: produitsRupture,
-        valeur_stock: valeurStock,
+      return res.status(201).json({
+        success: true,
+        message: 'Boutique créée avec succès',
         boutique: {
           id: boutique.id,
           nom: boutique.nom,
+          description: boutique.description,
+          template_id: boutique.template_id,
+          vendeur_id: boutique.vendeur_id,
           date_creation: boutique.createdAt
         }
       });
 
     } catch (error) {
-      console.error('Erreur statistiques boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des statistiques', 500);
-    }
-  }
-}
-
-module.exports = BoutiqueController;// controllers/boutiqueController.js
-const { Boutique, Vendeur, Template, Produit, Categorie, ImageProduit } = require('../models');
-const ApiResponse = require('../utils/apiResponse');
-const { Op } = require('sequelize');
-
-class BoutiqueController {
-  /**
-   * Créer une nouvelle boutique
-   */
-  static async creerBoutique(req, res) {
-    try {
-      const { nom, description, template_id } = req.body;
-
-      // Validation
-      if (!nom) {
-        return ApiResponse.validationError(res, [
-          { field: 'nom', message: 'Le nom de la boutique est requis' }
-        ]);
-      }
-
-      // Vérifier si le vendeur a déjà une boutique
-      const boutiqueExistante = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
+      console.error('❌ Erreur création boutique:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la création de la boutique'
       });
-
-      if (boutiqueExistante) {
-        return ApiResponse.error(res, 'Vous avez déjà une boutique', 409);
-      }
-
-      // Vérifier que le template existe et est compatible avec le grade du vendeur
-      const vendeur = await Vendeur.findByPk(req.user.id, {
-        include: ['grade']
-      });
-
-      if (template_id) {
-        const template = await Template.findByPk(template_id);
-        if (!template) {
-          return ApiResponse.notFound(res, 'Template non trouvé');
-        }
-
-        if (template.grade_requis_id > vendeur.grade_id) {
-          return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-        }
-      }
-
-      // Créer la boutique
-      const boutique = await Boutique.create({
-        vendeur_id: req.user.id,
-        nom,
-        description,
-        template_id: template_id || 1 // Template par défaut
-      });
-
-      // Récupérer la boutique avec ses relations
-      const boutiqueComplete = await Boutique.findByPk(boutique.id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] }
-        ]
-      });
-
-      return ApiResponse.created(res, boutiqueComplete, 'Boutique créée avec succès');
-
-    } catch (error) {
-      console.error('Erreur création boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la création de la boutique', 500);
     }
   }
 
   /**
-   * Récupérer sa propre boutique (vendeur)
+   * @desc    Récupérer une boutique par ID
+   * @route   GET /api/boutiques/:id
+   * @access  Public
+   * @response { success, boutique }
    */
-  static async obtenirMaBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id },
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] },
-          { 
-            model: Produit, 
-            as: 'produits',
-            include: [
-              { model: Categorie, as: 'categorie' },
-              { model: ImageProduit, as: 'images' }
-            ]
-          }
-        ]
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      return ApiResponse.success(res, boutique);
-
-    } catch (error) {
-      console.error('Erreur récupération boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération de la boutique', 500);
-    }
-  }
-
-  /**
-   * Récupérer une boutique publique par ID
-   */
-  static async obtenirBoutique(req, res) {
+  static async getBoutiqueById(req, res) {
     try {
       const { id } = req.params;
+      console.log('🔍 Récupération boutique:', id);
 
       const boutique = await Boutique.findByPk(id, {
         include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] },
-          { 
-            model: Produit, 
-            as: 'produits',
-            where: { stock: { [Op.gt]: 0 } }, // Seulement les produits en stock
-            required: false,
+          {
+            model: Vendeur,
+            as: 'vendeur',
             include: [
-              { model: Categorie, as: 'categorie' },
-              { model: ImageProduit, as: 'images' }
+              {
+                model: Utilisateur,
+                as: 'utilisateur',
+                attributes: ['nom']
+              },
+              {
+                model: GradeVendeur,
+                as: 'grade',
+                attributes: ['id', 'nom']
+              }
             ]
+          },
+          {
+            model: Template,
+            as: 'template',
+            attributes: ['id', 'nom']
+          },
+          {
+            model: Produit,
+            as: 'produits',
+            limit: 6,
+            include: [{
+              model: ImageProduit,
+              as: 'images',
+              where: { est_principale: true },
+              required: false,
+              attributes: ['url']
+            }]
           }
         ]
       });
 
       if (!boutique) {
-        return ApiResponse.notFound(res, 'Boutique non trouvée');
-      }
-
-      return ApiResponse.success(res, boutique);
-
-    } catch (error) {
-      console.error('Erreur récupération boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération de la boutique', 500);
-    }
-  }
-
-  /**
-   * Lister toutes les boutiques publiques
-   */
-  static async listerBoutiques(req, res) {
-    try {
-      const { page = 1, limit = 12, search, grade } = req.query;
-      const offset = (page - 1) * limit;
-
-      const whereClause = {};
-      if (search) {
-        whereClause[Op.or] = [
-          { nom: { [Op.like]: `%${search}%` } },
-          { description: { [Op.like]: `%${search}%` } }
-        ];
-      }
-
-      const includeClause = [
-        { model: Template, as: 'template' },
-        { 
-          model: Vendeur, 
-          as: 'vendeur', 
-          include: ['grade'],
-          ...(grade && { where: { grade_id: grade } })
-        }
-      ];
-
-      const { count, rows } = await Boutique.findAndCountAll({
-        where: whereClause,
-        include: includeClause,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        order: [['createdAt', 'DESC']]
-      });
-
-      return ApiResponse.paginated(res, rows, {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count
-      });
-
-    } catch (error) {
-      console.error('Erreur liste boutiques:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des boutiques', 500);
-    }
-  }
-
-  /**
-   * Mettre à jour sa boutique
-   */
-  static async mettreAJourBoutique(req, res) {
-    try {
-      const { nom, description, template_id } = req.body;
-
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Vérifier le template si fourni
-      if (template_id) {
-        const vendeur = await Vendeur.findByPk(req.user.id, {
-          include: ['grade']
+        return res.status(404).json({
+          success: false,
+          message: 'Boutique non trouvée'
         });
-
-        const template = await Template.findByPk(template_id);
-        if (!template) {
-          return ApiResponse.notFound(res, 'Template non trouvé');
-        }
-
-        if (template.grade_requis_id > vendeur.grade_id) {
-          return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-        }
       }
 
-      // Mettre à jour la boutique
-      await boutique.update({
-        nom: nom || boutique.nom,
-        description: description || boutique.description,
-        template_id: template_id || boutique.template_id
-      });
-
-      // Récupérer la boutique mise à jour
-      const boutiqueMiseAJour = await Boutique.findByPk(boutique.id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] }
-        ]
-      });
-
-      return ApiResponse.updated(res, boutiqueMiseAJour);
-
-    } catch (error) {
-      console.error('Erreur mise à jour boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la mise à jour de la boutique', 500);
-    }
-  }
-
-  /**
-   * Supprimer sa boutique
-   */
-  static async supprimerBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      await boutique.destroy();
-      return ApiResponse.deleted(res, 'Boutique supprimée avec succès');
-
-    } catch (error) {
-      console.error('Erreur suppression boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la suppression de la boutique', 500);
-    }
-  }
-
-  /**
-   * Changer le template de sa boutique
-   */
-  static async changerTemplate(req, res) {
-    try {
-      const { template_id } = req.body;
-
-      if (!template_id) {
-        return ApiResponse.validationError(res, [
-          { field: 'template_id', message: 'L\'ID du template est requis' }
-        ]);
-      }
-
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Vérifier le grade requis pour le template
-      const vendeur = await Vendeur.findByPk(req.user.id, {
-        include: ['grade']
-      });
-
-      const template = await Template.findByPk(template_id);
-      if (!template) {
-        return ApiResponse.notFound(res, 'Template non trouvé');
-      }
-
-      if (template.grade_requis_id > vendeur.grade_id) {
-        return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-      }
-
-      await boutique.update({ template_id });
-
-      const boutiqueMiseAJour = await Boutique.findByPk(boutique.id, {
-        include: [{ model: Template, as: 'template' }]
-      });
-
-      return ApiResponse.updated(res, boutiqueMiseAJour, 'Template mis à jour avec succès');
-
-    } catch (error) {
-      console.error('Erreur changement template:', error);
-      return ApiResponse.error(res, 'Erreur lors du changement de template', 500);
-    }
-  }
-
-  /**
-   * Obtenir les statistiques de sa boutique
-   */
-  static async statistiquesBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Compter les produits
-      const totalProduits = await Produit.count({
+      // Enrichir avec des statistiques publiques
+      const nombreProduits = await Produit.count({
         where: { boutique_id: boutique.id }
       });
 
-      const produitsEnStock = await Produit.count({
-        where: { 
-          boutique_id: boutique.id,
-          stock: { [Op.gt]: 0 }
+      const statistiquesVentes = await StatistiqueVente.findAll({
+        where: { vendeur_id: boutique.vendeur_id },
+        attributes: [
+          [require('sequelize').fn('SUM', require('sequelize').col('ventes')), 'total_ventes']
+        ],
+        raw: true
+      });
+
+      const totalVentes = parseInt(statistiquesVentes[0]?.total_ventes) || 0;
+
+      const boutiqueComplete = {
+        id: boutique.id,
+        nom: boutique.nom,
+        description: boutique.description,
+        logo_url: boutique.logo_url,
+        banniere_url: boutique.banniere_url,
+        template: boutique.template,
+        vendeur: {
+          nom: boutique.vendeur.utilisateur.nom,
+          grade: boutique.vendeur.grade
+        },
+        statistiques_publiques: {
+          nombre_produits: nombreProduits,
+          total_ventes: totalVentes
+        },
+        produits_apercu: boutique.produits.map(produit => ({
+          id: produit.id,
+          nom: produit.nom,
+          prix: parseFloat(produit.prix),
+          image: produit.images[0]?.url || null,
+          stock: produit.stock
+        })),
+        date_creation: boutique.createdAt
+      };
+
+      return res.json({
+        success: true,
+        boutique: boutiqueComplete
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur récupération boutique:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération de la boutique'
+      });
+    }
+  }
+
+  /**
+   * @desc    Mettre à jour une boutique
+   * @route   PUT /api/boutiques/:id
+   * @access  Private (Propriétaire ou Admin)
+   * @body    { nom, description, template_id }
+   * @response { success, message, boutique }
+   */
+  static async updateBoutique(req, res) {
+    try {
+      const { id } = req.params;
+      const { nom, description, template_id } = req.body;
+      console.log('✏️ Mise à jour boutique:', id);
+
+      const boutique = await Boutique.findByPk(id, {
+        include: [{
+          model: Vendeur,
+          as: 'vendeur'
+        }]
+      });
+
+      if (!boutique) {
+        return res.status(404).json({
+          success: false,
+          message: 'Boutique non trouvée'
+        });
+      }
+
+      // Vérifier les droits (propriétaire ou admin)
+      if (req.user.role !== 'admin' && boutique.vendeur_id !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Vous n\'êtes pas autorisé à modifier cette boutique'
+        });
+      }
+
+      // Validation des données
+      if (!nom && !description && !template_id) {
+        return res.status(400).json({
+          success: false,
+          message: 'Aucune donnée à mettre à jour'
+        });
+      }
+
+      const updateData = {};
+      if (nom) updateData.nom = nom.trim();
+      if (description !== undefined) updateData.description = description.trim();
+
+      // Vérifier le template si changement
+      if (template_id && template_id !== boutique.template_id) {
+        const template = await Template.findByPk(template_id);
+        if (!template) {
+          return res.status(404).json({
+            success: false,
+            message: 'Template non trouvé'
+          });
         }
-      });
 
-      const produitsRupture = totalProduits - produitsEnStock;
+        // Vérifier le grade pour le nouveau template
+        const vendeur = await Vendeur.findByPk(boutique.vendeur_id, {
+          include: [{
+            model: GradeVendeur,
+            as: 'grade'
+          }]
+        });
 
-      // Calculer la valeur totale du stock
-      const produits = await Produit.findAll({
-        where: { boutique_id: boutique.id },
-        attributes: ['prix', 'stock']
-      });
+        if (!template.estAccessiblePourGrade(vendeur.grade_id)) {
+          return res.status(403).json({
+            success: false,
+            message: 'Ce template nécessite un grade supérieur'
+          });
+        }
 
-      const valeurStock = produits.reduce((total, produit) => {
-        return total + (produit.prix * produit.stock);
-      }, 0);
+        updateData.template_id = template_id;
+      }
 
-      return ApiResponse.success(res, {
-        total_produits: totalProduits,
-        produits_en_stock: produitsEnStock,
-        produits_rupture: produitsRupture,
-        valeur_stock: valeurStock,
+      // Mettre à jour
+      await boutique.update(updateData);
+
+      console.log('✅ Boutique mise à jour:', id);
+
+      return res.json({
+        success: true,
+        message: 'Boutique mise à jour avec succès',
         boutique: {
           id: boutique.id,
           nom: boutique.nom,
+          description: boutique.description,
+          template_id: boutique.template_id
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur mise à jour boutique:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la mise à jour de la boutique'
+      });
+    }
+  }
+
+  /**
+   * @desc    Récupérer la boutique d'un vendeur
+   * @route   GET /api/boutiques/vendeur/:vendeurId
+   * @access  Public
+   * @response { success, boutique }
+   */
+  static async getBoutiqueByVendeur(req, res) {
+    try {
+      const { vendeurId } = req.params;
+      console.log('👤 Boutique du vendeur:', vendeurId);
+
+      const boutique = await Boutique.findOne({
+        where: { vendeur_id: vendeurId },
+        include: [
+          {
+            model: Vendeur,
+            as: 'vendeur',
+            include: [
+              {
+                model: Utilisateur,
+                as: 'utilisateur',
+                attributes: ['nom']
+              },
+              {
+                model: GradeVendeur,
+                as: 'grade',
+                attributes: ['nom']
+              }
+            ]
+          },
+          {
+            model: Template,
+            as: 'template',
+            attributes: ['nom']
+          }
+        ]
+      });
+
+      if (!boutique) {
+        return res.status(404).json({
+          success: false,
+          message: 'Aucune boutique trouvée pour ce vendeur'
+        });
+      }
+
+      // Statistiques publiques
+      const nombreProduits = await Produit.count({
+        where: { boutique_id: boutique.id }
+      });
+
+      return res.json({
+        success: true,
+        boutique: {
+          id: boutique.id,
+          nom: boutique.nom,
+          description: boutique.description,
+          logo_url: boutique.logo_url,
+          banniere_url: boutique.banniere_url,
+          template: boutique.template?.nom,
+          vendeur: {
+            id: boutique.vendeur_id,
+            nom: boutique.vendeur.utilisateur.nom,
+            grade: boutique.vendeur.grade?.nom
+          },
+          nombre_produits: nombreProduits,
           date_creation: boutique.createdAt
         }
       });
 
     } catch (error) {
-      console.error('Erreur statistiques boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des statistiques', 500);
-    }
-  }
-}
-
-module.exports = BoutiqueController;// controllers/boutiqueController.js
-const { Boutique, Vendeur, Template, Produit, Categorie, ImageProduit } = require('../models');
-const ApiResponse = require('../utils/apiResponse');
-const { Op } = require('sequelize');
-
-class BoutiqueController {
-  /**
-   * Créer une nouvelle boutique
-   */
-  static async creerBoutique(req, res) {
-    try {
-      const { nom, description, template_id } = req.body;
-
-      // Validation
-      if (!nom) {
-        return ApiResponse.validationError(res, [
-          { field: 'nom', message: 'Le nom de la boutique est requis' }
-        ]);
-      }
-
-      // Vérifier si le vendeur a déjà une boutique
-      const boutiqueExistante = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
+      console.error('❌ Erreur boutique par vendeur:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération de la boutique'
       });
-
-      if (boutiqueExistante) {
-        return ApiResponse.error(res, 'Vous avez déjà une boutique', 409);
-      }
-
-      // Vérifier que le template existe et est compatible avec le grade du vendeur
-      const vendeur = await Vendeur.findByPk(req.user.id, {
-        include: ['grade']
-      });
-
-      if (template_id) {
-        const template = await Template.findByPk(template_id);
-        if (!template) {
-          return ApiResponse.notFound(res, 'Template non trouvé');
-        }
-
-        if (template.grade_requis_id > vendeur.grade_id) {
-          return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-        }
-      }
-
-      // Créer la boutique
-      const boutique = await Boutique.create({
-        vendeur_id: req.user.id,
-        nom,
-        description,
-        template_id: template_id || 1 // Template par défaut
-      });
-
-      // Récupérer la boutique avec ses relations
-      const boutiqueComplete = await Boutique.findByPk(boutique.id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] }
-        ]
-      });
-
-      return ApiResponse.created(res, boutiqueComplete, 'Boutique créée avec succès');
-
-    } catch (error) {
-      console.error('Erreur création boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la création de la boutique', 500);
     }
   }
 
   /**
-   * Récupérer sa propre boutique (vendeur)
+   * @desc    Uploader le logo de la boutique
+   * @route   POST /api/boutiques/:id/logo
+   * @access  Private (Propriétaire ou Admin)
+   * @response { success, message, logoUrl }
    */
-  static async obtenirMaBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id },
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] },
-          { 
-            model: Produit, 
-            as: 'produits',
-            include: [
-              { model: Categorie, as: 'categorie' },
-              { model: ImageProduit, as: 'images' }
-            ]
-          }
-        ]
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      return ApiResponse.success(res, boutique);
-
-    } catch (error) {
-      console.error('Erreur récupération boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération de la boutique', 500);
-    }
-  }
-
-  /**
-   * Récupérer une boutique publique par ID
-   */
-  static async obtenirBoutique(req, res) {
+  static async uploadLogo(req, res) {
     try {
       const { id } = req.params;
+      console.log('📷 Upload logo boutique:', id);
 
-      const boutique = await Boutique.findByPk(id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] },
-          { 
-            model: Produit, 
-            as: 'produits',
-            where: { stock: { [Op.gt]: 0 } }, // Seulement les produits en stock
-            required: false,
-            include: [
-              { model: Categorie, as: 'categorie' },
-              { model: ImageProduit, as: 'images' }
-            ]
-          }
-        ]
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Boutique non trouvée');
-      }
-
-      return ApiResponse.success(res, boutique);
-
-    } catch (error) {
-      console.error('Erreur récupération boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération de la boutique', 500);
-    }
-  }
-
-  /**
-   * Lister toutes les boutiques publiques
-   */
-  static async listerBoutiques(req, res) {
-    try {
-      const { page = 1, limit = 12, search, grade } = req.query;
-      const offset = (page - 1) * limit;
-
-      const whereClause = {};
-      if (search) {
-        whereClause[Op.or] = [
-          { nom: { [Op.like]: `%${search}%` } },
-          { description: { [Op.like]: `%${search}%` } }
-        ];
-      }
-
-      const includeClause = [
-        { model: Template, as: 'template' },
-        { 
-          model: Vendeur, 
-          as: 'vendeur', 
-          include: ['grade'],
-          ...(grade && { where: { grade_id: grade } })
-        }
-      ];
-
-      const { count, rows } = await Boutique.findAndCountAll({
-        where: whereClause,
-        include: includeClause,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        order: [['createdAt', 'DESC']]
-      });
-
-      return ApiResponse.paginated(res, rows, {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count
-      });
-
-    } catch (error) {
-      console.error('Erreur liste boutiques:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des boutiques', 500);
-    }
-  }
-
-  /**
-   * Mettre à jour sa boutique
-   */
-  static async mettreAJourBoutique(req, res) {
-    try {
-      const { nom, description, template_id } = req.body;
-
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Vérifier le template si fourni
-      if (template_id) {
-        const vendeur = await Vendeur.findByPk(req.user.id, {
-          include: ['grade']
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'Aucun fichier fourni'
         });
+      }
 
-        const template = await Template.findByPk(template_id);
-        if (!template) {
-          return ApiResponse.notFound(res, 'Template non trouvé');
-        }
+      const boutique = await Boutique.findByPk(id);
+      if (!boutique) {
+        return res.status(404).json({
+          success: false,
+          message: 'Boutique non trouvée'
+        });
+      }
 
-        if (template.grade_requis_id > vendeur.grade_id) {
-          return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
+      // Vérifier les droits
+      if (req.user.role !== 'admin' && boutique.vendeur_id !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Vous n\'êtes pas autorisé à modifier cette boutique'
+        });
+      }
+
+      // Générer nom de fichier unique
+      const timestamp = Date.now();
+      const extension = path.extname(req.file.originalname);
+      const nomFichier = `logo_boutique_${id}_${timestamp}${extension}`;
+      const dossierUpload = process.env.UPLOAD_PATH || 'uploads/boutiques';
+      const cheminComplet = path.join(dossierUpload, nomFichier);
+
+      // Créer le dossier s'il n'existe pas
+      await fs.mkdir(path.dirname(cheminComplet), { recursive: true });
+
+      // Sauvegarder le fichier
+      await fs.writeFile(cheminComplet, req.file.buffer);
+
+      // Supprimer l'ancien logo s'il existe
+      if (boutique.logo_url) {
+        try {
+          const ancienLogo = path.join(dossierUpload, path.basename(boutique.logo_url));
+          await fs.unlink(ancienLogo);
+        } catch (error) {
+          console.log('Ancien logo non trouvé:', boutique.logo_url);
         }
       }
 
       // Mettre à jour la boutique
-      await boutique.update({
-        nom: nom || boutique.nom,
-        description: description || boutique.description,
-        template_id: template_id || boutique.template_id
-      });
+      const logoUrl = `/uploads/boutiques/${nomFichier}`;
+      await boutique.update({ logo_url: logoUrl });
 
-      // Récupérer la boutique mise à jour
-      const boutiqueMiseAJour = await Boutique.findByPk(boutique.id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] }
-        ]
-      });
+      console.log('✅ Logo uploadé:', logoUrl);
 
-      return ApiResponse.updated(res, boutiqueMiseAJour);
+      return res.json({
+        success: true,
+        message: 'Logo uploadé avec succès',
+        logoUrl
+      });
 
     } catch (error) {
-      console.error('Erreur mise à jour boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la mise à jour de la boutique', 500);
+      console.error('❌ Erreur upload logo:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'upload du logo'
+      });
     }
   }
 
   /**
-   * Supprimer sa boutique
+   * @desc    Uploader la bannière de la boutique
+   * @route   POST /api/boutiques/:id/banniere
+   * @access  Private (Propriétaire ou Admin)
+   * @response { success, message, banniereUrl }
    */
-  static async supprimerBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      await boutique.destroy();
-      return ApiResponse.deleted(res, 'Boutique supprimée avec succès');
-
-    } catch (error) {
-      console.error('Erreur suppression boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la suppression de la boutique', 500);
-    }
-  }
-
-  /**
-   * Changer le template de sa boutique
-   */
-  static async changerTemplate(req, res) {
-    try {
-      const { template_id } = req.body;
-
-      if (!template_id) {
-        return ApiResponse.validationError(res, [
-          { field: 'template_id', message: 'L\'ID du template est requis' }
-        ]);
-      }
-
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Vérifier le grade requis pour le template
-      const vendeur = await Vendeur.findByPk(req.user.id, {
-        include: ['grade']
-      });
-
-      const template = await Template.findByPk(template_id);
-      if (!template) {
-        return ApiResponse.notFound(res, 'Template non trouvé');
-      }
-
-      if (template.grade_requis_id > vendeur.grade_id) {
-        return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-      }
-
-      await boutique.update({ template_id });
-
-      const boutiqueMiseAJour = await Boutique.findByPk(boutique.id, {
-        include: [{ model: Template, as: 'template' }]
-      });
-
-      return ApiResponse.updated(res, boutiqueMiseAJour, 'Template mis à jour avec succès');
-
-    } catch (error) {
-      console.error('Erreur changement template:', error);
-      return ApiResponse.error(res, 'Erreur lors du changement de template', 500);
-    }
-  }
-
-  /**
-   * Obtenir les statistiques de sa boutique
-   */
-  static async statistiquesBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Compter les produits
-      const totalProduits = await Produit.count({
-        where: { boutique_id: boutique.id }
-      });
-
-      const produitsEnStock = await Produit.count({
-        where: { 
-          boutique_id: boutique.id,
-          stock: { [Op.gt]: 0 }
-        }
-      });
-
-      const produitsRupture = totalProduits - produitsEnStock;
-
-      // Calculer la valeur totale du stock
-      const produits = await Produit.findAll({
-        where: { boutique_id: boutique.id },
-        attributes: ['prix', 'stock']
-      });
-
-      const valeurStock = produits.reduce((total, produit) => {
-        return total + (produit.prix * produit.stock);
-      }, 0);
-
-      return ApiResponse.success(res, {
-        total_produits: totalProduits,
-        produits_en_stock: produitsEnStock,
-        produits_rupture: produitsRupture,
-        valeur_stock: valeurStock,
-        boutique: {
-          id: boutique.id,
-          nom: boutique.nom,
-          date_creation: boutique.createdAt
-        }
-      });
-
-    } catch (error) {
-      console.error('Erreur statistiques boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des statistiques', 500);
-    }
-  }
-}
-
-module.exports = BoutiqueController;// controllers/boutiqueController.js
-const { Boutique, Vendeur, Template, Produit, Categorie, ImageProduit } = require('../models');
-const ApiResponse = require('../utils/apiResponse');
-const { Op } = require('sequelize');
-
-class BoutiqueController {
-  /**
-   * Créer une nouvelle boutique
-   */
-  static async creerBoutique(req, res) {
-    try {
-      const { nom, description, template_id } = req.body;
-
-      // Validation
-      if (!nom) {
-        return ApiResponse.validationError(res, [
-          { field: 'nom', message: 'Le nom de la boutique est requis' }
-        ]);
-      }
-
-      // Vérifier si le vendeur a déjà une boutique
-      const boutiqueExistante = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (boutiqueExistante) {
-        return ApiResponse.error(res, 'Vous avez déjà une boutique', 409);
-      }
-
-      // Vérifier que le template existe et est compatible avec le grade du vendeur
-      const vendeur = await Vendeur.findByPk(req.user.id, {
-        include: ['grade']
-      });
-
-      if (template_id) {
-        const template = await Template.findByPk(template_id);
-        if (!template) {
-          return ApiResponse.notFound(res, 'Template non trouvé');
-        }
-
-        if (template.grade_requis_id > vendeur.grade_id) {
-          return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-        }
-      }
-
-      // Créer la boutique
-      const boutique = await Boutique.create({
-        vendeur_id: req.user.id,
-        nom,
-        description,
-        template_id: template_id || 1 // Template par défaut
-      });
-
-      // Récupérer la boutique avec ses relations
-      const boutiqueComplete = await Boutique.findByPk(boutique.id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] }
-        ]
-      });
-
-      return ApiResponse.created(res, boutiqueComplete, 'Boutique créée avec succès');
-
-    } catch (error) {
-      console.error('Erreur création boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la création de la boutique', 500);
-    }
-  }
-
-  /**
-   * Récupérer sa propre boutique (vendeur)
-   */
-  static async obtenirMaBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id },
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] },
-          { 
-            model: Produit, 
-            as: 'produits',
-            include: [
-              { model: Categorie, as: 'categorie' },
-              { model: ImageProduit, as: 'images' }
-            ]
-          }
-        ]
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      return ApiResponse.success(res, boutique);
-
-    } catch (error) {
-      console.error('Erreur récupération boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération de la boutique', 500);
-    }
-  }
-
-  /**
-   * Récupérer une boutique publique par ID
-   */
-  static async obtenirBoutique(req, res) {
+  static async uploadBanniere(req, res) {
     try {
       const { id } = req.params;
+      console.log('🖼️ Upload bannière boutique:', id);
 
-      const boutique = await Boutique.findByPk(id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] },
-          { 
-            model: Produit, 
-            as: 'produits',
-            where: { stock: { [Op.gt]: 0 } }, // Seulement les produits en stock
-            required: false,
-            include: [
-              { model: Categorie, as: 'categorie' },
-              { model: ImageProduit, as: 'images' }
-            ]
-          }
-        ]
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Boutique non trouvée');
-      }
-
-      return ApiResponse.success(res, boutique);
-
-    } catch (error) {
-      console.error('Erreur récupération boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération de la boutique', 500);
-    }
-  }
-
-  /**
-   * Lister toutes les boutiques publiques
-   */
-  static async listerBoutiques(req, res) {
-    try {
-      const { page = 1, limit = 12, search, grade } = req.query;
-      const offset = (page - 1) * limit;
-
-      const whereClause = {};
-      if (search) {
-        whereClause[Op.or] = [
-          { nom: { [Op.like]: `%${search}%` } },
-          { description: { [Op.like]: `%${search}%` } }
-        ];
-      }
-
-      const includeClause = [
-        { model: Template, as: 'template' },
-        { 
-          model: Vendeur, 
-          as: 'vendeur', 
-          include: ['grade'],
-          ...(grade && { where: { grade_id: grade } })
-        }
-      ];
-
-      const { count, rows } = await Boutique.findAndCountAll({
-        where: whereClause,
-        include: includeClause,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        order: [['createdAt', 'DESC']]
-      });
-
-      return ApiResponse.paginated(res, rows, {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count
-      });
-
-    } catch (error) {
-      console.error('Erreur liste boutiques:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des boutiques', 500);
-    }
-  }
-
-  /**
-   * Mettre à jour sa boutique
-   */
-  static async mettreAJourBoutique(req, res) {
-    try {
-      const { nom, description, template_id } = req.body;
-
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Vérifier le template si fourni
-      if (template_id) {
-        const vendeur = await Vendeur.findByPk(req.user.id, {
-          include: ['grade']
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'Aucun fichier fourni'
         });
+      }
 
-        const template = await Template.findByPk(template_id);
-        if (!template) {
-          return ApiResponse.notFound(res, 'Template non trouvé');
-        }
+      const boutique = await Boutique.findByPk(id);
+      if (!boutique) {
+        return res.status(404).json({
+          success: false,
+          message: 'Boutique non trouvée'
+        });
+      }
 
-        if (template.grade_requis_id > vendeur.grade_id) {
-          return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
+      // Vérifier les droits
+      if (req.user.role !== 'admin' && boutique.vendeur_id !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Vous n\'êtes pas autorisé à modifier cette boutique'
+        });
+      }
+
+      // Générer nom de fichier unique
+      const timestamp = Date.now();
+      const extension = path.extname(req.file.originalname);
+      const nomFichier = `banniere_boutique_${id}_${timestamp}${extension}`;
+      const dossierUpload = process.env.UPLOAD_PATH || 'uploads/boutiques';
+      const cheminComplet = path.join(dossierUpload, nomFichier);
+
+      // Créer le dossier s'il n'existe pas
+      await fs.mkdir(path.dirname(cheminComplet), { recursive: true });
+
+      // Sauvegarder le fichier
+      await fs.writeFile(cheminComplet, req.file.buffer);
+
+      // Supprimer l'ancienne bannière s'il existe
+      if (boutique.banniere_url) {
+        try {
+          const ancienneBanniere = path.join(dossierUpload, path.basename(boutique.banniere_url));
+          await fs.unlink(ancienneBanniere);
+        } catch (error) {
+          console.log('Ancienne bannière non trouvée:', boutique.banniere_url);
         }
       }
 
       // Mettre à jour la boutique
-      await boutique.update({
-        nom: nom || boutique.nom,
-        description: description || boutique.description,
-        template_id: template_id || boutique.template_id
-      });
+      const banniereUrl = `/uploads/boutiques/${nomFichier}`;
+      await boutique.update({ banniere_url: banniereUrl });
 
-      // Récupérer la boutique mise à jour
-      const boutiqueMiseAJour = await Boutique.findByPk(boutique.id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] }
-        ]
-      });
+      console.log('✅ Bannière uploadée:', banniereUrl);
 
-      return ApiResponse.updated(res, boutiqueMiseAJour);
-
-    } catch (error) {
-      console.error('Erreur mise à jour boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la mise à jour de la boutique', 500);
-    }
-  }
-
-  /**
-   * Supprimer sa boutique
-   */
-  static async supprimerBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      await boutique.destroy();
-      return ApiResponse.deleted(res, 'Boutique supprimée avec succès');
-
-    } catch (error) {
-      console.error('Erreur suppression boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la suppression de la boutique', 500);
-    }
-  }
-
-  /**
-   * Changer le template de sa boutique
-   */
-  static async changerTemplate(req, res) {
-    try {
-      const { template_id } = req.body;
-
-      if (!template_id) {
-        return ApiResponse.validationError(res, [
-          { field: 'template_id', message: 'L\'ID du template est requis' }
-        ]);
-      }
-
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Vérifier le grade requis pour le template
-      const vendeur = await Vendeur.findByPk(req.user.id, {
-        include: ['grade']
-      });
-
-      const template = await Template.findByPk(template_id);
-      if (!template) {
-        return ApiResponse.notFound(res, 'Template non trouvé');
-      }
-
-      if (template.grade_requis_id > vendeur.grade_id) {
-        return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-      }
-
-      await boutique.update({ template_id });
-
-      const boutiqueMiseAJour = await Boutique.findByPk(boutique.id, {
-        include: [{ model: Template, as: 'template' }]
-      });
-
-      return ApiResponse.updated(res, boutiqueMiseAJour, 'Template mis à jour avec succès');
-
-    } catch (error) {
-      console.error('Erreur changement template:', error);
-      return ApiResponse.error(res, 'Erreur lors du changement de template', 500);
-    }
-  }
-
-  /**
-   * Obtenir les statistiques de sa boutique
-   */
-  static async statistiquesBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Compter les produits
-      const totalProduits = await Produit.count({
-        where: { boutique_id: boutique.id }
-      });
-
-      const produitsEnStock = await Produit.count({
-        where: { 
-          boutique_id: boutique.id,
-          stock: { [Op.gt]: 0 }
-        }
-      });
-
-      const produitsRupture = totalProduits - produitsEnStock;
-
-      // Calculer la valeur totale du stock
-      const produits = await Produit.findAll({
-        where: { boutique_id: boutique.id },
-        attributes: ['prix', 'stock']
-      });
-
-      const valeurStock = produits.reduce((total, produit) => {
-        return total + (produit.prix * produit.stock);
-      }, 0);
-
-      return ApiResponse.success(res, {
-        total_produits: totalProduits,
-        produits_en_stock: produitsEnStock,
-        produits_rupture: produitsRupture,
-        valeur_stock: valeurStock,
-        boutique: {
-          id: boutique.id,
-          nom: boutique.nom,
-          date_creation: boutique.createdAt
-        }
+      return res.json({
+        success: true,
+        message: 'Bannière uploadée avec succès',
+        banniereUrl
       });
 
     } catch (error) {
-      console.error('Erreur statistiques boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des statistiques', 500);
-    }
-  }
-}
-
-module.exports = BoutiqueController;// controllers/boutiqueController.js
-const { Boutique, Vendeur, Template, Produit, Categorie, ImageProduit } = require('../models');
-const ApiResponse = require('../utils/apiResponse');
-const { Op } = require('sequelize');
-
-class BoutiqueController {
-  /**
-   * Créer une nouvelle boutique
-   */
-  static async creerBoutique(req, res) {
-    try {
-      const { nom, description, template_id } = req.body;
-
-      // Validation
-      if (!nom) {
-        return ApiResponse.validationError(res, [
-          { field: 'nom', message: 'Le nom de la boutique est requis' }
-        ]);
-      }
-
-      // Vérifier si le vendeur a déjà une boutique
-      const boutiqueExistante = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
+      console.error('❌ Erreur upload bannière:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'upload de la bannière'
       });
-
-      if (boutiqueExistante) {
-        return ApiResponse.error(res, 'Vous avez déjà une boutique', 409);
-      }
-
-      // Vérifier que le template existe et est compatible avec le grade du vendeur
-      const vendeur = await Vendeur.findByPk(req.user.id, {
-        include: ['grade']
-      });
-
-      if (template_id) {
-        const template = await Template.findByPk(template_id);
-        if (!template) {
-          return ApiResponse.notFound(res, 'Template non trouvé');
-        }
-
-        if (template.grade_requis_id > vendeur.grade_id) {
-          return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-        }
-      }
-
-      // Créer la boutique
-      const boutique = await Boutique.create({
-        vendeur_id: req.user.id,
-        nom,
-        description,
-        template_id: template_id || 1 // Template par défaut
-      });
-
-      // Récupérer la boutique avec ses relations
-      const boutiqueComplete = await Boutique.findByPk(boutique.id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] }
-        ]
-      });
-
-      return ApiResponse.created(res, boutiqueComplete, 'Boutique créée avec succès');
-
-    } catch (error) {
-      console.error('Erreur création boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la création de la boutique', 500);
     }
   }
 
-  /**
-   * Récupérer sa propre boutique (vendeur)
-   */
-  static async obtenirMaBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id },
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] },
-          { 
-            model: Produit, 
-            as: 'produits',
-            include: [
-              { model: Categorie, as: 'categorie' },
-              { model: ImageProduit, as: 'images' }
-            ]
-          }
-        ]
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      return ApiResponse.success(res, boutique);
-
-    } catch (error) {
-      console.error('Erreur récupération boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération de la boutique', 500);
-    }
-  }
+  // ==================== ROUTES ADDITIONNELLES ====================
 
   /**
-   * Récupérer une boutique publique par ID
+   * @desc    Lister toutes les boutiques avec filtres
+   * @route   GET /api/boutiques
+   * @access  Public
    */
-  static async obtenirBoutique(req, res) {
+  static async getAllBoutiques(req, res) {
     try {
-      const { id } = req.params;
-
-      const boutique = await Boutique.findByPk(id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] },
-          { 
-            model: Produit, 
-            as: 'produits',
-            where: { stock: { [Op.gt]: 0 } }, // Seulement les produits en stock
-            required: false,
-            include: [
-              { model: Categorie, as: 'categorie' },
-              { model: ImageProduit, as: 'images' }
-            ]
-          }
-        ]
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Boutique non trouvée');
-      }
-
-      return ApiResponse.success(res, boutique);
-
-    } catch (error) {
-      console.error('Erreur récupération boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération de la boutique', 500);
-    }
-  }
-
-  /**
-   * Lister toutes les boutiques publiques
-   */
-  static async listerBoutiques(req, res) {
-    try {
-      const { page = 1, limit = 12, search, grade } = req.query;
-      const offset = (page - 1) * limit;
+      const { nom, categorie, grade, page = 1, limit = 12, tri = 'recent' } = req.query;
+      console.log('📋 Liste boutiques avec filtres');
 
       const whereClause = {};
-      if (search) {
-        whereClause[Op.or] = [
-          { nom: { [Op.like]: `%${search}%` } },
-          { description: { [Op.like]: `%${search}%` } }
-        ];
-      }
-
       const includeClause = [
-        { model: Template, as: 'template' },
-        { 
-          model: Vendeur, 
-          as: 'vendeur', 
-          include: ['grade'],
-          ...(grade && { where: { grade_id: grade } })
+        {
+          model: Vendeur,
+          as: 'vendeur',
+          include: [
+            {
+              model: Utilisateur,
+              as: 'utilisateur',
+              attributes: ['nom'],
+              where: nom ? { nom: { [Op.like]: `%${nom}%` } } : {}
+            },
+            {
+              model: GradeVendeur,
+              as: 'grade',
+              attributes: ['nom'],
+              where: grade ? { nom: grade } : {}
+            }
+          ]
+        },
+        {
+          model: Template,
+          as: 'template',
+          attributes: ['nom']
         }
       ];
 
-      const { count, rows } = await Boutique.findAndCountAll({
+      // Filtrer par catégorie de produits
+      if (categorie) {
+        includeClause.push({
+          model: Produit,
+          as: 'produits',
+          include: [{
+            model: Categorie,
+            as: 'categorie',
+            where: { nom: categorie }
+          }],
+          required: true
+        });
+      }
+
+      const offset = (page - 1) * limit;
+
+      // Définir l'ordre
+      let orderClause = [];
+      switch (tri) {
+        case 'nom':
+          orderClause = [['nom', 'ASC']];
+          break;
+        case 'ancien':
+          orderClause = [['createdAt', 'ASC']];
+          break;
+        case 'recent':
+        default:
+          orderClause = [['createdAt', 'DESC']];
+      }
+
+      const { count, rows: boutiques } = await Boutique.findAndCountAll({
         where: whereClause,
         include: includeClause,
         limit: parseInt(limit),
-        offset: parseInt(offset),
-        order: [['createdAt', 'DESC']]
+        offset: offset,
+        order: orderClause,
+        distinct: true
       });
 
-      return ApiResponse.paginated(res, rows, {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count
+      // Enrichir avec statistiques
+      const boutiquesEnrichies = await Promise.all(
+        boutiques.map(async (boutique) => {
+          const nombreProduits = await Produit.count({
+            where: { boutique_id: boutique.id }
+          });
+
+          return {
+            id: boutique.id,
+            nom: boutique.nom,
+            description: boutique.description,
+            logo_url: boutique.logo_url,
+            vendeur: {
+              nom: boutique.vendeur.utilisateur.nom,
+              grade: boutique.vendeur.grade?.nom
+            },
+            template: boutique.template?.nom,
+            nombre_produits: nombreProduits,
+            date_creation: boutique.createdAt
+          };
+        })
+      );
+
+      return res.json({
+        success: true,
+        boutiques: boutiquesEnrichies,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: count,
+          totalPages: Math.ceil(count / limit)
+        },
+        filtres_appliques: {
+          nom: nom || null,
+          categorie: categorie || null,
+          grade: grade || null,
+          tri
+        }
       });
 
     } catch (error) {
-      console.error('Erreur liste boutiques:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des boutiques', 500);
+      console.error('❌ Erreur liste boutiques:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération des boutiques'
+      });
     }
   }
 
   /**
-   * Mettre à jour sa boutique
+   * @desc    Récupérer les produits d'une boutique
+   * @route   GET /api/boutiques/:id/produits
+   * @access  Public
    */
-  static async mettreAJourBoutique(req, res) {
+  static async getBoutiqueProduits(req, res) {
     try {
-      const { nom, description, template_id } = req.body;
+      const { id } = req.params;
+      const { categorie, prix_min, prix_max, page = 1, limit = 12, tri = 'recent' } = req.query;
+      console.log('🛍️ Produits boutique:', id);
 
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
+      const boutique = await Boutique.findByPk(id);
       if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Vérifier le template si fourni
-      if (template_id) {
-        const vendeur = await Vendeur.findByPk(req.user.id, {
-          include: ['grade']
+        return res.status(404).json({
+          success: false,
+          message: 'Boutique non trouvée'
         });
+      }
 
-        const template = await Template.findByPk(template_id);
-        if (!template) {
-          return ApiResponse.notFound(res, 'Template non trouvé');
+      const whereClause = { boutique_id: id };
+
+      // Filtres prix
+      if (prix_min || prix_max) {
+        whereClause.prix = {};
+        if (prix_min) whereClause.prix[Op.gte] = parseFloat(prix_min);
+        if (prix_max) whereClause.prix[Op.lte] = parseFloat(prix_max);
+      }
+
+      const includeClause = [
+        {
+          model: ImageProduit,
+          as: 'images',
+          where: { est_principale: true },
+          required: false,
+          attributes: ['url']
+        },
+        {
+          model: Categorie,
+          as: 'categorie',
+          attributes: ['id', 'nom'],
+          where: categorie ? { nom: categorie } : {}
         }
+      ];
 
-        if (template.grade_requis_id > vendeur.grade_id) {
-          return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
+      const offset = (page - 1) * limit;
+
+      // Ordre
+      let orderClause = [];
+      switch (tri) {
+        case 'prix_asc':
+          orderClause = [['prix', 'ASC']];
+          break;
+        case 'prix_desc':
+          orderClause = [['prix', 'DESC']];
+          break;
+        case 'nom':
+          orderClause = [['nom', 'ASC']];
+          break;
+        case 'recent':
+        default:
+          orderClause = [['createdAt', 'DESC']];
+      }
+
+      const { count, rows: produits } = await Produit.findAndCountAll({
+        where: whereClause,
+        include: includeClause,
+        limit: parseInt(limit),
+        offset: offset,
+        order: orderClause
+      });
+
+      const produitsFormates = produits.map(produit => ({
+        id: produit.id,
+        nom: produit.nom,
+        prix: parseFloat(produit.prix),
+        stock: produit.stock,
+        image: produit.images[0]?.url || null,
+        categorie: produit.categorie?.nom || 'Sans catégorie',
+        disponible: produit.stock > 0
+      }));
+
+      return res.json({
+        success: true,
+        produits: produitsFormates,
+        boutique: {
+          id: boutique.id,
+          nom: boutique.nom
+        },
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: count,
+          totalPages: Math.ceil(count / limit)
+        },
+        filtres_appliques: {
+          categorie: categorie || null,
+          prix_min: prix_min || null,
+          prix_max: prix_max || null,
+          tri
         }
-      }
-
-      // Mettre à jour la boutique
-      await boutique.update({
-        nom: nom || boutique.nom,
-        description: description || boutique.description,
-        template_id: template_id || boutique.template_id
       });
-
-      // Récupérer la boutique mise à jour
-      const boutiqueMiseAJour = await Boutique.findByPk(boutique.id, {
-        include: [
-          { model: Template, as: 'template' },
-          { model: Vendeur, as: 'vendeur', include: ['grade'] }
-        ]
-      });
-
-      return ApiResponse.updated(res, boutiqueMiseAJour);
 
     } catch (error) {
-      console.error('Erreur mise à jour boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la mise à jour de la boutique', 500);
+      console.error('❌ Erreur produits boutique:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération des produits'
+      });
     }
   }
 
   /**
-   * Supprimer sa boutique
+   * @desc    Statistiques de la boutique
+   * @route   GET /api/boutiques/:id/statistiques
+   * @access  Private (Propriétaire ou Admin)
    */
-  static async supprimerBoutique(req, res) {
+  static async getBoutiqueStatistiques(req, res) {
     try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
+      const { id } = req.params;
+      const { periode = '30j' } = req.query;
+      console.log('📊 Statistiques boutique:', id);
 
+      const boutique = await Boutique.findByPk(id);
       if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
+        return res.status(404).json({
+          success: false,
+          message: 'Boutique non trouvée'
+        });
       }
 
-      await boutique.destroy();
-      return ApiResponse.deleted(res, 'Boutique supprimée avec succès');
-
-    } catch (error) {
-      console.error('Erreur suppression boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la suppression de la boutique', 500);
-    }
-  }
-
-  /**
-   * Changer le template de sa boutique
-   */
-  static async changerTemplate(req, res) {
-    try {
-      const { template_id } = req.body;
-
-      if (!template_id) {
-        return ApiResponse.validationError(res, [
-          { field: 'template_id', message: 'L\'ID du template est requis' }
-        ]);
+      // Vérifier les droits
+      if (req.user.role !== 'admin' && boutique.vendeur_id !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Accès non autorisé'
+        });
       }
 
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
+      // Calculer la date limite selon la période
+      let dateLimite = new Date();
+      switch (periode) {
+        case '7j':
+          dateLimite.setDate(dateLimite.getDate() - 7);
+          break;
+        case '30j':
+          dateLimite.setDate(dateLimite.getDate() - 30);
+          break;
+        case '90j':
+          dateLimite.setDate(dateLimite.getDate() - 90);
+          break;
+        case '1an':
+          dateLimite.setFullYear(dateLimite.getFullYear() - 1);
+          break;
+        default:
+          dateLimite.setDate(dateLimite.getDate() - 30);
       }
 
-      // Vérifier le grade requis pour le template
-      const vendeur = await Vendeur.findByPk(req.user.id, {
-        include: ['grade']
-      });
-
-      const template = await Template.findByPk(template_id);
-      if (!template) {
-        return ApiResponse.notFound(res, 'Template non trouvé');
-      }
-
-      if (template.grade_requis_id > vendeur.grade_id) {
-        return ApiResponse.forbidden(res, 'Ce template nécessite un grade supérieur');
-      }
-
-      await boutique.update({ template_id });
-
-      const boutiqueMiseAJour = await Boutique.findByPk(boutique.id, {
-        include: [{ model: Template, as: 'template' }]
-      });
-
-      return ApiResponse.updated(res, boutiqueMiseAJour, 'Template mis à jour avec succès');
-
-    } catch (error) {
-      console.error('Erreur changement template:', error);
-      return ApiResponse.error(res, 'Erreur lors du changement de template', 500);
-    }
-  }
-
-  /**
-   * Obtenir les statistiques de sa boutique
-   */
-  static async statistiquesBoutique(req, res) {
-    try {
-      const boutique = await Boutique.findOne({
-        where: { vendeur_id: req.user.id }
-      });
-
-      if (!boutique) {
-        return ApiResponse.notFound(res, 'Aucune boutique trouvée');
-      }
-
-      // Compter les produits
-      const totalProduits = await Produit.count({
-        where: { boutique_id: boutique.id }
+      // Statistiques générales
+      const nombreProduits = await Produit.count({
+        where: { boutique_id: id }
       });
 
       const produitsEnStock = await Produit.count({
         where: { 
-          boutique_id: boutique.id,
+          boutique_id: id,
           stock: { [Op.gt]: 0 }
         }
       });
 
-      const produitsRupture = totalProduits - produitsEnStock;
-
-      // Calculer la valeur totale du stock
-      const produits = await Produit.findAll({
-        where: { boutique_id: boutique.id },
-        attributes: ['prix', 'stock']
+      // Statistiques de ventes
+      const statsVentes = await StatistiqueVente.findAll({
+        where: { 
+          vendeur_id: boutique.vendeur_id,
+          date: { [Op.gte]: dateLimite }
+        },
+        attributes: [
+          [require('sequelize').fn('SUM', require('sequelize').col('ventes')), 'total_ventes'],
+          [require('sequelize').fn('SUM', require('sequelize').col('chiffre_affaires')), 'total_ca']
+        ],
+        raw: true
       });
 
-      const valeurStock = produits.reduce((total, produit) => {
-        return total + (produit.prix * produit.stock);
-      }, 0);
+      const stats = statsVentes[0] || { total_ventes: 0, total_ca: 0 };
 
-      return ApiResponse.success(res, {
-        total_produits: totalProduits,
-        produits_en_stock: produitsEnStock,
-        produits_rupture: produitsRupture,
-        valeur_stock: valeurStock,
-        boutique: {
-          id: boutique.id,
-          nom: boutique.nom,
-          date_creation: boutique.createdAt
+      // Commandes récentes
+      const nombreCommandes = await Commande.count({
+        include: [{
+          model: CommandeProduit,
+          as: 'produits',
+          include: [{
+            model: Produit,
+            as: 'produit',
+            where: { boutique_id: id }
+          }]
+        }],
+        where: { date: { [Op.gte]: dateLimite } }
+      });
+
+      // Produits les plus vendus
+      const produitsPopulaires = await Produit.findAll({
+        where: { boutique_id: id },
+        include: [{
+          model: CommandeProduit,
+          as: 'commandes',
+          attributes: []
+        }],
+        attributes: [
+          'id', 'nom', 'prix',
+          [require('sequelize').fn('SUM', require('sequelize').col('commandes.quantite')), 'total_vendu']
+        ],
+        group: ['Produit.id'],
+        order: [[require('sequelize').fn('SUM', require('sequelize').col('commandes.quantite')), 'DESC']],
+        limit: 5,
+        raw: false
+      });
+
+      return res.json({
+        success: true,
+        statistiques: {
+          periode: periode,
+          boutique: {
+            id: boutique.id,
+            nom: boutique.nom
+          },
+          produits: {
+            total: nombreProduits,
+            en_stock: produitsEnStock,
+            rupture_stock: nombreProduits - produitsEnStock
+          },
+          ventes: {
+            nombre_ventes: parseInt(stats.total_ventes) || 0,
+            chiffre_affaires: parseFloat(stats.total_ca) || 0,
+            nombre_commandes: nombreCommandes,
+            vente_moyenne: stats.total_ventes > 0 ? parseFloat(stats.total_ca) / parseInt(stats.total_ventes) : 0
+          },
+          produits_populaires: produitsPopulaires.map(p => ({
+            id: p.id,
+            nom: p.nom,
+            prix: parseFloat(p.prix),
+            total_vendu: parseInt(p.get('total_vendu')) || 0
+          }))
         }
       });
 
     } catch (error) {
-      console.error('Erreur statistiques boutique:', error);
-      return ApiResponse.error(res, 'Erreur lors de la récupération des statistiques', 500);
+      console.error('❌ Erreur statistiques boutique:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération des statistiques'
+      });
+    }
+  }
+
+  /**
+   * @desc    Rechercher des boutiques
+   * @route   GET /api/boutiques/search
+   * @access  Public
+   */
+  static async searchBoutiques(req, res) {
+    try {
+      const { q, localisation, grade, categorie, page = 1, limit = 12 } = req.query;
+      console.log('🔍 Recherche boutiques:', q);
+
+      const whereClause = {};
+      const includeClause = [
+        {
+          model: Vendeur,
+          as: 'vendeur',
+          include: [
+            {
+              model: Utilisateur,
+              as: 'utilisateur',
+              attributes: ['nom']
+            },
+            {
+              model: GradeVendeur,
+              as: 'grade',
+              attributes: ['nom'],
+              where: grade ? { nom: grade } : {}
+            }
+          ]
+        }
+      ];
+
+      // Recherche textuelle
+      if (q) {
+        whereClause[Op.or] = [
+          { nom: { [Op.like]: `%${q}%` } },
+          { description: { [Op.like]: `%${q}%` } }
+        ];
+      }
+
+      const offset = (page - 1) * limit;
+
+      const { count, rows: boutiques } = await Boutique.findAndCountAll({
+        where: whereClause,
+        include: includeClause,
+        limit: parseInt(limit),
+        offset: offset,
+        order: [['createdAt', 'DESC']],
+        distinct: true
+      });
+
+      const boutiquesFormatees = boutiques.map(boutique => ({
+        id: boutique.id,
+        nom: boutique.nom,
+        description: boutique.description,
+        logo_url: boutique.logo_url,
+        vendeur: {
+          nom: boutique.vendeur.utilisateur.nom,
+          grade: boutique.vendeur.grade?.nom
+        }
+      }));
+
+      return res.json({
+        success: true,
+        boutiques: boutiquesFormatees,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: count,
+          totalPages: Math.ceil(count / limit)
+        },
+        recherche: {
+          terme: q || null,
+          nombre_resultats: count
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur recherche boutiques:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la recherche'
+      });
+    }
+  }
+
+  /**
+   * @desc    Boutiques les plus populaires
+   * @route   GET /api/boutiques/populaires
+   * @access  Public
+   */
+  static async getBoutiquesPopulaires(req, res) {
+    try {
+      const { limite = 8, periode = '30j' } = req.query;
+      console.log('🌟 Boutiques populaires');
+
+      // Calculer date limite
+      let dateLimite = new Date();
+      switch (periode) {
+        case '7j':
+          dateLimite.setDate(dateLimite.getDate() - 7);
+          break;
+        case '30j':
+          dateLimite.setDate(dateLimite.getDate() - 30);
+          break;
+        case '90j':
+          dateLimite.setDate(dateLimite.getDate() - 90);
+          break;
+        default:
+          dateLimite.setDate(dateLimite.getDate() - 30);
+      }
+
+      // Récupérer les boutiques avec leurs ventes
+      const boutiques = await Boutique.findAll({
+        include: [
+          {
+            model: Vendeur,
+            as: 'vendeur',
+            include: [
+              {
+                model: Utilisateur,
+                as: 'utilisateur',
+                attributes: ['nom']
+              },
+              {
+                model: StatistiqueVente,
+                as: 'statistiques',
+                where: { date: { [Op.gte]: dateLimite } },
+                required: false,
+                attributes: []
+              }
+            ]
+          }
+        ],
+        attributes: [
+          'id', 'nom', 'description', 'logo_url',
+          [require('sequelize').fn('SUM', require('sequelize').col('vendeur.statistiques.ventes')), 'total_ventes']
+        ],
+        group: ['Boutique.id'],
+        order: [[require('sequelize').fn('SUM', require('sequelize').col('vendeur.statistiques.ventes')), 'DESC']],
+        limit: parseInt(limite),
+        raw: false
+      });
+
+      const boutiquesPopulaires = await Promise.all(
+        boutiques.map(async (boutique) => {
+          const nombreProduits = await Produit.count({
+            where: { boutique_id: boutique.id }
+          });
+
+          return {
+            id: boutique.id,
+            nom: boutique.nom,
+            description: boutique.description,
+            logo_url: boutique.logo_url,
+            vendeur: boutique.vendeur.utilisateur.nom,
+            nombre_produits: nombreProduits,
+            total_ventes: parseInt(boutique.get('total_ventes')) || 0
+          };
+        })
+      );
+
+      return res.json({
+        success: true,
+        boutiques: boutiquesPopulaires,
+        criteres: {
+          periode: periode,
+          base_sur: 'nombre_ventes'
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur boutiques populaires:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération des boutiques populaires'
+      });
+    }
+  }
+
+  /**
+   * @desc    Supprimer une boutique
+   * @route   DELETE /api/boutiques/:id
+   * @access  Private (Propriétaire ou Admin)
+   */
+  static async deleteBoutique(req, res) {
+    try {
+      const { id } = req.params;
+      console.log('🗑️ Suppression boutique:', id);
+
+      const boutique = await Boutique.findByPk(id);
+      if (!boutique) {
+        return res.status(404).json({
+          success: false,
+          message: 'Boutique non trouvée'
+        });
+      }
+
+      // Vérifier les droits
+      if (req.user.role !== 'admin' && boutique.vendeur_id !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Vous n\'êtes pas autorisé à supprimer cette boutique'
+        });
+      }
+
+      // Vérifier s'il y a des commandes en cours
+      const commandesEnCours = await Commande.count({
+        include: [{
+          model: CommandeProduit,
+          as: 'produits',
+          include: [{
+            model: Produit,
+            as: 'produit',
+            where: { boutique_id: id }
+          }]
+        }],
+        where: {
+          statut: { [Op.in]: ['en attente', 'validée', 'expédiée'] }
+        }
+      });
+
+      if (commandesEnCours > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Impossible de supprimer : commandes en cours',
+          commandes_en_cours: commandesEnCours
+        });
+      }
+
+      // Supprimer les fichiers associés
+      if (boutique.logo_url) {
+        try {
+          const logoPath = path.join(process.env.UPLOAD_PATH || 'uploads/boutiques', path.basename(boutique.logo_url));
+          await fs.unlink(logoPath);
+        } catch (error) {
+          console.log('Logo non trouvé:', boutique.logo_url);
+        }
+      }
+
+      if (boutique.banniere_url) {
+        try {
+          const bannierePath = path.join(process.env.UPLOAD_PATH || 'uploads/boutiques', path.basename(boutique.banniere_url));
+          await fs.unlink(bannierePath);
+        } catch (error) {
+          console.log('Bannière non trouvée:', boutique.banniere_url);
+        }
+      }
+
+      // Supprimer la boutique (CASCADE supprimera les produits)
+      await boutique.destroy();
+
+      console.log('✅ Boutique supprimée:', id);
+
+      return res.json({
+        success: true,
+        message: 'Boutique supprimée avec succès'
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur suppression boutique:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la suppression de la boutique'
+      });
+    }
+  }
+
+  // ==================== UTILITAIRES ====================
+
+  /**
+   * @desc    Templates disponibles pour création de boutique
+   * @route   GET /api/boutiques/templates/disponibles
+   * @access  Public
+   */
+  static async getTemplatesDisponibles(req, res) {
+    try {
+      const { grade } = req.query;
+      console.log('🎨 Templates disponibles, grade:', grade);
+
+      const whereClause = {};
+      if (grade) {
+        const gradeObj = await GradeVendeur.findOne({ where: { nom: grade } });
+        if (gradeObj) {
+          whereClause.grade_requis_id = { [Op.lte]: gradeObj.id };
+        }
+      }
+
+      const templates = await Template.findAll({
+        where: whereClause,
+        include: [{
+          model: GradeVendeur,
+          as: 'gradeRequis',
+          attributes: ['nom']
+        }],
+        order: [['grade_requis_id', 'ASC'], ['nom', 'ASC']]
+      });
+
+      return res.json({
+        success: true,
+        templates: templates.map(template => ({
+          id: template.id,
+          nom: template.nom,
+          grade_requis: template.gradeRequis?.nom || 'Amateur',
+          accessible: true
+        }))
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur templates disponibles:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération des templates'
+      });
     }
   }
 }
