@@ -1,0 +1,153 @@
+<!-- src/app/login/login.component.html -->
+<div class="login-container">
+  
+  <!-- Main Content -->
+  <div class="main-content">
+    
+    <!-- Logo Section -->
+    <div class="logo-section">
+      <h1 class="logo-text" (click)="goHome()">Logo</h1>
+    </div>
+
+    <!-- Login Form -->
+    <div class="form-section">
+      <div class="form-wrapper">
+        
+        <!-- Form Title -->
+        <div class="form-header">
+          <h2>Welcome Back</h2>
+          <p>Sign in to your account</p>
+        </div>
+
+        <!-- Login Form -->
+        <form [formGroup]="loginForm" (ngSubmit)="onLogin()" class="login-form">
+          
+          <!-- Email or Username Field -->
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Email or Username</mat-label>
+            <input 
+              matInput 
+              formControlName="emailOrUsername"
+              type="text"
+              placeholder="Enter your email or username"
+              [class.error]="emailOrUsername?.invalid && emailOrUsername?.touched"
+            >
+            <mat-icon matSuffix>person</mat-icon>
+            <mat-error *ngIf="emailOrUsername?.invalid && emailOrUsername?.touched">
+              {{ getEmailUsernameErrorMessage() }}
+            </mat-error>
+          </mat-form-field>
+
+          <!-- Password Field -->
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Password</mat-label>
+            <input 
+              matInput 
+              formControlName="password"
+              [type]="hidePassword ? 'password' : 'text'"
+              placeholder="Enter your password"
+              [class.error]="password?.invalid && password?.touched"
+            >
+            <button 
+              mat-icon-button 
+              matSuffix 
+              type="button"
+              (click)="togglePasswordVisibility()"
+              [attr.aria-label]="'Hide password'" 
+              [attr.aria-pressed]="hidePassword"
+            >
+              <mat-icon>{{ hidePassword ? 'visibility_off' : 'visibility' }}</mat-icon>
+            </button>
+            <mat-error *ngIf="password?.invalid && password?.touched">
+              {{ getPasswordErrorMessage() }}
+            </mat-error>
+          </mat-form-field>
+
+          <!-- Remember Me & Forgot Password -->
+          <div class="form-options">
+            <mat-checkbox formControlName="rememberMe" class="remember-me">
+              Remember me
+            </mat-checkbox>
+            
+            <button 
+              type="button" 
+              mat-button 
+              class="forgot-password-btn"
+              (click)="goToForgotPassword()"
+            >
+              Forgot password?
+            </button>
+          </div>
+
+          <!-- Login Button -->
+          <button 
+            mat-raised-button 
+            type="submit"
+            class="login-btn"
+            [class.loading]="isLoading"
+            [disabled]="loginForm.invalid || isLoading"
+          >
+            <span *ngIf="!isLoading">Log in</span>
+            <span *ngIf="isLoading">Signing in...</span>
+          </button>
+
+        </form>
+
+        <!-- Divider -->
+        <div class="divider">
+          <span>or</span>
+        </div>
+
+        <!-- Social Login -->
+        <div class="social-login">
+          <button 
+            mat-raised-button 
+            class="social-btn google-btn"
+            (click)="loginWithGoogle()"
+            type="button"
+          >
+            <mat-icon>login</mat-icon>
+            Continue with Google
+          </button>
+          
+          <button 
+            mat-raised-button 
+            class="social-btn facebook-btn"
+            (click)="loginWithFacebook()"
+            type="button"
+          >
+            <mat-icon>login</mat-icon>
+            Continue with Facebook
+          </button>
+        </div>
+
+        <!-- Additional Links -->
+        <div class="form-footer">
+          <p class="signup-link">
+            Don't have an account? 
+            <button mat-button class="link-btn" (click)="goToSignUp()">
+              Sign up here
+            </button>
+          </p>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <h3>Footer</h3>
+      <div class="footer-links">
+        <a href="#" mat-button>About Us</a>
+        <a href="#" mat-button>Contact</a>
+        <a href="#" mat-button>Privacy Policy</a>
+        <a href="#" mat-button>Terms of Service</a>
+      </div>
+      <p class="footer-copyright">© 2024 Your Marketplace. All rights reserved.</p>
+    </div>
+  </footer>
+
+</div>

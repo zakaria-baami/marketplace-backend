@@ -1,0 +1,282 @@
+<!-- src/app/store-template-3/store-template-3.component.html -->
+<div class="template-container">
+  
+  <!-- Template Preview Header -->
+  <div class="template-header">
+    <div class="template-info">
+      <h3>Template 3 - Bold & Creative</h3>
+      <p>Eye-catching design for creative businesses</p>
+    </div>
+    <button mat-button class="back-btn" (click)="goBackToTemplates()">
+      <mat-icon>arrow_back</mat-icon>
+      Back to Templates
+    </button>
+  </div>
+
+  <!-- Store Content -->
+  <div class="store-container">
+    
+    <!-- Creative Header -->
+    <header class="creative-header">
+      <div class="header-background"></div>
+      <div class="header-content">
+        
+        <!-- Logo and Brand -->
+        <div class="brand-section">
+          <div class="logo-container">
+            <mat-icon class="logo-icon">{{ storeInfo.logo }}</mat-icon>
+          </div>
+          <div class="brand-text">
+            <h1 class="store-name">{{ storeInfo.name }}</h1>
+            <p class="store-slogan">{{ storeInfo.slogan }}</p>
+          </div>
+        </div>
+
+        <!-- Header Actions -->
+        <div class="header-actions">
+          <button mat-fab color="primary" class="action-fab" (click)="onContactPhone()">
+            <mat-icon>phone</mat-icon>
+          </button>
+          <button mat-fab color="accent" class="action-fab" (click)="onContactEmail()">
+            <mat-icon>email</mat-icon>
+          </button>
+        </div>
+      </div>
+
+      <!-- Navigation Menu -->
+      <nav class="creative-nav">
+        <div class="nav-content">
+          <div 
+            *ngFor="let category of categories" 
+            class="nav-item"
+            [style.background-color]="category.bgColor"
+            [style.border-left]="'4px solid ' + category.color"
+            (click)="onCategoryClick(category)"
+          >
+            <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
+            <span>{{ category.name }}</span>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <div class="hero-content">
+        <div class="hero-left">
+          <h2 class="hero-title">{{ heroData.title }}</h2>
+          <p class="hero-subtitle">{{ heroData.subtitle }}</p>
+          
+          <div class="hero-features">
+            <div *ngFor="let feature of heroData.features" class="feature-item">
+              {{ feature }}
+            </div>
+          </div>
+          
+          <button 
+            mat-raised-button 
+            class="hero-cta"
+            (click)="onHeroButtonClick()"
+          >
+            {{ heroData.cta }}
+            <mat-icon>rocket_launch</mat-icon>
+          </button>
+        </div>
+        
+        <div class="hero-right">
+          <div class="hero-stats">
+            <div class="stat-card">
+              <div class="stat-number">{{ storeInfo.totalProducts }}+</div>
+              <div class="stat-label">Products</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">{{ storeInfo.happyCustomers }}+</div>
+              <div class="stat-label">Happy Customers</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">{{ storeInfo.founded }}</div>
+              <div class="stat-label">Founded</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Featured Products -->
+    <section class="products-section">
+      <div class="section-container">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="title-highlight">Featured</span> Products
+          </h2>
+          <p class="section-subtitle">Handpicked items just for you</p>
+        </div>
+        
+        <div class="products-grid">
+          <div 
+            *ngFor="let product of featuredProducts; let i = index" 
+            class="product-card"
+            [class.featured]="i % 2 === 0"
+            (click)="onProductClick(product)"
+          >
+            
+            <!-- Product Badges -->
+            <div class="product-badges">
+              <div *ngIf="product.isHot" class="badge hot-badge">
+                🔥 HOT
+              </div>
+              <div *ngIf="product.isLimited" class="badge limited-badge">
+                ⚡ LIMITED
+              </div>
+              <div *ngIf="product.badge" class="badge custom-badge" [style.background-color]="product.color">
+                {{ product.badge }}
+              </div>
+            </div>
+            
+            <!-- Product Image -->
+            <div class="product-image" [style.background]="'linear-gradient(135deg, ' + product.color + '20, ' + product.color + '10)'">
+              <div class="image-placeholder">
+                <mat-icon class="product-icon" [style.color]="product.color">inventory_2</mat-icon>
+              </div>
+              
+              <!-- Quick Actions -->
+              <div class="quick-actions">
+                <button 
+                  mat-mini-fab 
+                  [style.background-color]="product.color"
+                  (click)="onQuickView(product); $event.stopPropagation()"
+                >
+                  <mat-icon>visibility</mat-icon>
+                </button>
+              </div>
+            </div>
+            
+            <!-- Product Info -->
+            <div class="product-info">
+              <h3 class="product-name">{{ product.name }}</h3>
+              <p class="product-description">{{ product.description }}</p>
+              
+              <!-- Rating -->
+              <div class="product-rating">
+                <div class="stars">
+                  <mat-icon *ngFor="let star of getStarArray(product.rating)" class="star">star</mat-icon>
+                </div>
+                <span class="rating-text">{{ product.rating }}</span>
+              </div>
+              
+              <!-- Price -->
+              <div class="product-pricing">
+                <span class="current-price" [style.color]="product.color">
+                  ${{ product.price.toFixed(2) }}
+                </span>
+                <span *ngIf="product.originalPrice" class="original-price">
+                  ${{ product.originalPrice.toFixed(2) }}
+                </span>
+              </div>
+              
+              <!-- Add to Cart -->
+              <button 
+                mat-raised-button 
+                class="add-to-cart-btn"
+                [style.background-color]="product.color"
+                (click)="onAddToCart(product); $event.stopPropagation()"
+              >
+                <mat-icon>add_shopping_cart</mat-icon>
+                Add to Cart
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section">
+      <div class="section-container">
+        <h2 class="section-title">Why Choose Us?</h2>
+        <div class="features-grid">
+          <div *ngFor="let feature of features" class="feature-card">
+            <div class="feature-icon" [style.background-color]="feature.color + '20'">
+              <mat-icon [style.color]="feature.color">{{ feature.icon }}</mat-icon>
+            </div>
+            <h3 class="feature-title">{{ feature.title }}</h3>
+            <p class="feature-description">{{ feature.description }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Newsletter Section -->
+    <section class="newsletter-section">
+      <div class="section-container">
+        <div class="newsletter-content">
+          <div class="newsletter-icon">
+            <mat-icon>email</mat-icon>
+          </div>
+          <h2>Stay in the Loop!</h2>
+          <p>Get the latest creative products and exclusive deals delivered to your inbox.</p>
+          <button mat-raised-button class="newsletter-btn" (click)="onNewsletterSignup()">
+            <mat-icon>mail_outline</mat-icon>
+            Subscribe Now
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Creative Footer -->
+    <footer class="creative-footer">
+      <div class="footer-container">
+        
+        <!-- Footer Main -->
+        <div class="footer-main">
+          <div class="footer-brand">
+            <div class="footer-logo">
+              <mat-icon>{{ storeInfo.logo }}</mat-icon>
+              <span>{{ storeInfo.name }}</span>
+            </div>
+            <p class="footer-description">{{ storeInfo.description }}</p>
+            
+            <!-- Social Links -->
+            <div class="social-links">
+              <button mat-fab class="social-btn facebook" (click)="onSocialClick('facebook')">
+                <mat-icon>thumb_up</mat-icon>
+              </button>
+              <button mat-fab class="social-btn twitter" (click)="onSocialClick('twitter')">
+                <mat-icon>alternate_email</mat-icon>
+              </button>
+              <button mat-fab class="social-btn instagram" (click)="onSocialClick('instagram')">
+                <mat-icon>camera_alt</mat-icon>
+              </button>
+              <button mat-fab class="social-btn youtube" (click)="onSocialClick('youtube')">
+                <mat-icon>play_arrow</mat-icon>
+              </button>
+            </div>
+          </div>
+          
+          <div class="footer-info">
+            <h4>Get in Touch</h4>
+            <div class="contact-item">
+              <mat-icon>phone</mat-icon>
+              <span>{{ storeInfo.phone }}</span>
+            </div>
+            <div class="contact-item">
+              <mat-icon>email</mat-icon>
+              <span>{{ storeInfo.email }}</span>
+            </div>
+            <div class="contact-item">
+              <mat-icon>location_on</mat-icon>
+              <span>{{ storeInfo.address }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Footer Bottom -->
+        <div class="footer-bottom">
+          <div class="footer-gradient"></div>
+          <p>&copy; 2024 {{ storeInfo.name }}. Made with ❤️ for creators.</p>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+</div>

@@ -1,0 +1,115 @@
+<!-- home.component.html -->
+<div class="home-container">
+  <!-- Header -->
+  <mat-toolbar class="header-toolbar">
+    <div class="header-content">
+      <!-- Menu Button -->
+      <button mat-icon-button class="menu-button">
+        <mat-icon>menu</mat-icon>
+      </button>
+
+      <!-- Logo -->
+      <div class="logo">
+        <h2>Logo</h2>
+      </div>
+
+      <!-- Search Bar -->
+      <div class="search-container">
+        <mat-form-field appearance="outline" class="search-field">
+          <input matInput placeholder="Search products...">
+          <mat-icon matSuffix>search</mat-icon>
+        </mat-form-field>
+      </div>
+
+      <!-- Navigation Links -->
+      <div class="nav-links">
+        <a mat-button routerLink="/page1">page></a>
+        <a mat-button routerLink="/page2">page></a>
+        <a mat-button routerLink="/page3">page></a>
+        <a mat-button routerLink="/page4">page></a>
+      </div>
+
+      <!-- Right Side Controls -->
+      <div class="header-controls">
+        <!-- Language Selector -->
+        <mat-select [(value)]="selectedLanguage" class="language-selector">
+          <mat-option value="EN">EN</mat-option>
+          <mat-option value="FR">FR</mat-option>
+        </mat-select>
+
+        <!-- Sign Up Button -->
+        <button mat-raised-button color="primary" class="signup-btn" (click)="onSignUpClick()">
+          Sign up
+        </button>
+
+        <!-- Cart -->
+        <button mat-icon-button class="cart-button" (click)="onCartClick()">
+          <mat-icon>shopping_cart</mat-icon>
+          <span class="cart-text">cart</span>
+        </button>
+
+        <!-- Filter -->
+        <button mat-icon-button class="filter-button">
+          <mat-icon>filter_list</mat-icon>
+          <span class="filter-text">Filter</span>
+        </button>
+      </div>
+    </div>
+  </mat-toolbar>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    
+    <!-- Categories Section -->
+    <section class="categories-section">
+      <h2 class="section-title">Categories</h2>
+      <div class="categories-grid">
+        <div 
+          *ngFor="let category of categories" 
+          class="category-item"
+          (click)="onCategoryClick(category)"
+        >
+          <div class="category-circle">
+            <mat-icon>{{ category.icon }}</mat-icon>
+          </div>
+          <p class="category-name">{{ category.name }}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Products Section -->
+    <section class="products-section">
+      <h2 class="section-title">Products</h2>
+      <div class="products-grid">
+        <mat-card 
+          *ngFor="let product of products" 
+          class="product-card"
+          (click)="onProductClick(product)"
+        >
+          <div class="product-image-placeholder">
+            <mat-icon class="product-icon">inventory_2</mat-icon>
+          </div>
+          <mat-card-content class="product-content">
+            <h4 class="product-name">{{ product.name }}</h4>
+            <p class="product-price">${{ product.price }}</p>
+            <p class="product-category">{{ product.category }}</p>
+          </mat-card-content>
+        </mat-card>
+      </div>
+    </section>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <h3>Footer</h3>
+      <div class="footer-links">
+        <a href="#" mat-button>About Us</a>
+        <a href="#" mat-button>Contact</a>
+        <a href="#" mat-button>Privacy Policy</a>
+        <a href="#" mat-button>Terms of Service</a>
+      </div>
+      <p class="footer-copyright">© 2024 Your Marketplace. All rights reserved.</p>
+    </div>
+  </footer>
+</div>

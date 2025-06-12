@@ -1,0 +1,289 @@
+<!-- src/app/store-template-2/store-template-2.component.html -->
+<div class="template-container">
+  
+  <!-- Template Preview Header -->
+  <div class="template-header">
+    <div class="template-info">
+      <h3>Template 2 - Modern & Professional</h3>
+      <p>Advanced features for growing businesses</p>
+    </div>
+    <button mat-button class="back-btn" (click)="goBackToTemplates()">
+      <mat-icon>arrow_back</mat-icon>
+      Back to Templates
+    </button>
+  </div>
+
+  <!-- Store Content -->
+  <div class="store-container">
+    
+    <!-- Store Header -->
+    <header class="store-header">
+      <div class="header-content">
+        <div class="store-branding">
+          <div class="store-logo">
+            <mat-icon>{{ storeInfo.logo }}</mat-icon>
+          </div>
+          <div class="store-info-text">
+            <h1 class="store-name">{{ storeInfo.name }}</h1>
+            <p class="store-slogan">{{ storeInfo.slogan }}</p>
+            <div class="store-rating">
+              <span class="rating-stars">
+                <mat-icon *ngFor="let star of getStarArray(storeInfo.rating)">star</mat-icon>
+              </span>
+              <span class="rating-text">{{ storeInfo.rating }} ({{ storeInfo.totalReviews }} reviews)</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="header-actions">
+          <button mat-icon-button class="action-btn" (click)="onContactPhone()">
+            <mat-icon>phone</mat-icon>
+          </button>
+          <button mat-icon-button class="action-btn" (click)="onContactEmail()">
+            <mat-icon>email</mat-icon>
+          </button>
+          <button mat-raised-button color="primary" class="contact-btn">
+            Contact Us
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Hero Banner -->
+    <section class="hero-banner">
+      <div class="hero-content">
+        <div class="hero-text">
+          <h2 class="hero-title">{{ heroBanner.title }}</h2>
+          <p class="hero-subtitle">{{ heroBanner.subtitle }}</p>
+          <button 
+            mat-raised-button 
+            color="accent" 
+            class="hero-btn"
+            (click)="onHeroButtonClick()"
+          >
+            {{ heroBanner.buttonText }}
+            <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+        <div class="hero-stats">
+          <div class="stat-item">
+            <span class="stat-number">{{ storeInfo.totalReviews }}+</span>
+            <span class="stat-label">Happy Customers</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-number">{{ getTotalProductsCount() }}+</span>
+            <span class="stat-label">Products</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-number">{{ storeInfo.established }}</span>
+            <span class="stat-label">Established</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Categories Section -->
+    <section class="categories-section">
+      <div class="section-container">
+        <h2 class="section-title">Shop by Category</h2>
+        <div class="categories-grid">
+          <div 
+            *ngFor="let category of categories" 
+            class="category-card"
+            (click)="onCategoryClick(category)"
+          >
+            <div class="category-icon">
+              <mat-icon>{{ category.icon }}</mat-icon>
+            </div>
+            <h3 class="category-name">{{ category.name }}</h3>
+            <p class="category-count">{{ category.count }} items</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Featured Products -->
+    <section class="featured-products">
+      <div class="section-container">
+        <div class="section-header">
+          <h2 class="section-title">Featured Products</h2>
+          <button mat-button class="view-all-btn">
+            View All
+            <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+        
+        <div class="products-grid">
+          <div 
+            *ngFor="let product of featuredProducts" 
+            class="product-card"
+            (click)="onProductClick(product)"
+          >
+            <!-- Product Badges -->
+            <div class="product-badges">
+              <mat-chip *ngIf="product.isNew" class="badge new-badge">New</mat-chip>
+              <mat-chip *ngIf="product.onSale" class="badge sale-badge">Sale</mat-chip>
+              <mat-chip *ngIf="product.badge" class="badge special-badge">{{ product.badge }}</mat-chip>
+            </div>
+            
+            <!-- Product Image -->
+            <div class="product-image">
+              <div class="image-placeholder">
+                <mat-icon class="product-icon">inventory_2</mat-icon>
+              </div>
+              <div class="product-overlay">
+                <button 
+                  mat-fab 
+                  color="primary" 
+                  class="quick-view-btn"
+                  (click)="onQuickView(product); $event.stopPropagation()"
+                >
+                  <mat-icon>visibility</mat-icon>
+                </button>
+              </div>
+            </div>
+            
+            <!-- Product Info -->
+            <div class="product-info">
+              <h3 class="product-name">{{ product.name }}</h3>
+              <p class="product-description">{{ product.description }}</p>
+              
+              <!-- Product Rating -->
+              <div class="product-rating">
+                <span class="rating-stars">
+                  <mat-icon *ngFor="let star of getStarArray(product.rating)" class="star">star</mat-icon>
+                </span>
+                <span class="rating-value">{{ product.rating }}</span>
+              </div>
+              
+              <!-- Product Price -->
+              <div class="product-pricing">
+                <span class="current-price">${{ product.price.toFixed(2) }}</span>
+                <span *ngIf="product.originalPrice" class="original-price">
+                  ${{ product.originalPrice.toFixed(2) }}
+                </span>
+              </div>
+              
+              <button 
+                mat-raised-button 
+                color="primary" 
+                class="add-to-cart-btn"
+                (click)="onAddToCart(product); $event.stopPropagation()"
+              >
+                <mat-icon>shopping_cart</mat-icon>
+                Add to Cart
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Testimonials Section -->
+    <div class="testimonial-card">
+  <div class="testimonial-content">
+    <div class="testimonial-rating">
+      <mat-icon>star</mat-icon>
+      <mat-icon>star</mat-icon>
+      <mat-icon>star</mat-icon>
+      <mat-icon>star</mat-icon>
+      <mat-icon>star</mat-icon>
+    </div>
+    <p class="testimonial-text">"Amazing service and quality products. Highly recommended!"</p>
+    <div class="testimonial-author">
+      <mat-icon class="author-avatar">face</mat-icon>
+      <span class="author-name">Sarah Johnson</span>
+    </div>
+  </div>
+</div>
+
+    <!-- Newsletter Section -->
+    <section class="newsletter-section">
+      <div class="section-container">
+        <div class="newsletter-content">
+          <h2>Stay Updated</h2>
+          <p>Get the latest products and exclusive offers delivered to your inbox.</p>
+          <button mat-raised-button color="accent" (click)="onNewsletterSignup()">
+            Subscribe to Newsletter
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Store Footer -->
+    <footer class="store-footer">
+      <div class="footer-container">
+        <div class="footer-main">
+          <div class="footer-section">
+            <div class="footer-logo">
+              <mat-icon>{{ storeInfo.logo }}</mat-icon>
+              <span>{{ storeInfo.name }}</span>
+            </div>
+            <p class="footer-description">{{ storeInfo.description }}</p>
+            <div class="social-links">
+              <button mat-icon-button (click)="onSocialClick('facebook')">
+                <mat-icon>facebook</mat-icon>
+              </button>
+              <button mat-icon-button (click)="onSocialClick('twitter')">
+                <mat-icon>alternate_email</mat-icon>
+              </button>
+              <button mat-icon-button (click)="onSocialClick('instagram')">
+                <mat-icon>camera_alt</mat-icon>
+              </button>
+              <button mat-icon-button (click)="onSocialClick('linkedin')">
+                <mat-icon>business</mat-icon>
+              </button>
+            </div>
+          </div>
+          
+          <div class="footer-section">
+            <h4>Quick Links</h4>
+            <ul class="footer-links">
+              <li><a href="#" mat-button>About Us</a></li>
+              <li><a href="#" mat-button>Products</a></li>
+              <li><a href="#" mat-button>Services</a></li>
+              <li><a href="#" mat-button>Support</a></li>
+            </ul>
+          </div>
+          
+          <div class="footer-section">
+            <h4>Customer Care</h4>
+            <ul class="footer-links">
+              <li><a href="#" mat-button>Contact Us</a></li>
+              <li><a href="#" mat-button>Shipping Info</a></li>
+              <li><a href="#" mat-button>Returns</a></li>
+              <li><a href="#" mat-button>FAQ</a></li>
+            </ul>
+          </div>
+          
+          <div class="footer-section">
+            <h4>Contact Info</h4>
+            <div class="contact-info">
+              <div class="contact-item">
+                <mat-icon>phone</mat-icon>
+                <span>{{ storeInfo.phone }}</span>
+              </div>
+              <div class="contact-item">
+                <mat-icon>email</mat-icon>
+                <span>{{ storeInfo.email }}</span>
+              </div>
+              <div class="contact-item">
+                <mat-icon>location_on</mat-icon>
+                <span>{{ storeInfo.address }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="footer-bottom">
+          <p>&copy; 2024 {{ storeInfo.name }}. All rights reserved.</p>
+          <div class="footer-bottom-links">
+            <a href="#" mat-button>Privacy Policy</a>
+            <a href="#" mat-button>Terms of Service</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+</div>

@@ -1,0 +1,137 @@
+<!-- src/app/buyer-registration/buyer-registration.component.html -->
+<div class="registration-container">
+  
+  <!-- Main Content -->
+  <div class="main-content">
+    
+    <!-- Logo Section -->
+    <div class="logo-section">
+      <h1 class="logo-text">Logo</h1>
+    </div>
+
+    <!-- Registration Form -->
+    <div class="form-section">
+      <div class="form-wrapper">
+        
+        <!-- Form Title -->
+        <div class="form-header">
+          <h2>Create Your Account</h2>
+          <p>Join our marketplace as a buyer</p>
+        </div>
+
+        <!-- Registration Form -->
+        <form [formGroup]="registrationForm" (ngSubmit)="onRegister()" class="registration-form">
+          
+          <!-- Email Field -->
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Email</mat-label>
+            <input 
+              matInput 
+              formControlName="email"
+              type="email"
+              placeholder="Enter your email"
+              [class.error]="email?.invalid && email?.touched"
+            >
+            <mat-icon matSuffix>email</mat-icon>
+            <mat-error *ngIf="email?.invalid && email?.touched">
+              {{ getEmailErrorMessage() }}
+            </mat-error>
+          </mat-form-field>
+
+          <!-- Password Field -->
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Password</mat-label>
+            <input 
+              matInput 
+              formControlName="password"
+              [type]="hidePassword ? 'password' : 'text'"
+              placeholder="Enter your password"
+              [class.error]="password?.invalid && password?.touched"
+            >
+            <button 
+              mat-icon-button 
+              matSuffix 
+              type="button"
+              (click)="togglePasswordVisibility()"
+              [attr.aria-label]="'Hide password'" 
+              [attr.aria-pressed]="hidePassword"
+            >
+              <mat-icon>{{ hidePassword ? 'visibility_off' : 'visibility' }}</mat-icon>
+            </button>
+            <mat-error *ngIf="password?.invalid && password?.touched">
+              {{ getPasswordErrorMessage() }}
+            </mat-error>
+          </mat-form-field>
+
+          <!-- Confirm Password Field -->
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Confirm Password</mat-label>
+            <input 
+              matInput 
+              formControlName="confirmPassword"
+              [type]="hideConfirmPassword ? 'password' : 'text'"
+              placeholder="Confirm your password"
+              [class.error]="confirmPassword?.invalid && confirmPassword?.touched"
+            >
+            <button 
+              mat-icon-button 
+              matSuffix 
+              type="button"
+              (click)="toggleConfirmPasswordVisibility()"
+              [attr.aria-label]="'Hide password'" 
+              [attr.aria-pressed]="hideConfirmPassword"
+            >
+              <mat-icon>{{ hideConfirmPassword ? 'visibility_off' : 'visibility' }}</mat-icon>
+            </button>
+            <mat-error *ngIf="confirmPassword?.invalid && confirmPassword?.touched">
+              {{ getConfirmPasswordErrorMessage() }}
+            </mat-error>
+          </mat-form-field>
+
+          <!-- Register Button -->
+          <button 
+            mat-raised-button 
+            type="submit"
+            class="register-btn"
+            [disabled]="registrationForm.invalid"
+          >
+            Register
+          </button>
+
+        </form>
+
+        <!-- Additional Links -->
+        <div class="form-footer">
+          <p class="login-link">
+            Already have an account? 
+            <button mat-button class="link-btn" (click)="goToLogin()">
+              Sign in here
+            </button>
+          </p>
+          
+          <button mat-button class="back-btn" (click)="goBack()">
+            <mat-icon>arrow_back</mat-icon>
+            Back to User Selection
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <h3>Footer</h3>
+      <div class="footer-links">
+        <a href="#" mat-button>About Us</a>
+        <a href="#" mat-button>Contact</a>
+        <a href="#" mat-button>Privacy Policy</a>
+        <a href="#" mat-button>Terms of Service</a>
+      </div>
+      <p class="footer-copyright">© 2024 Your Marketplace. All rights reserved.</p>
+    </div>
+  </footer>
+
+</div>

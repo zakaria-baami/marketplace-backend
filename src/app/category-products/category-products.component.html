@@ -1,0 +1,179 @@
+<!-- src/app/category-products/category-products.component.html -->
+<div class="category-products-container">
+  
+  <!-- Header (same as other pages) -->
+  <mat-toolbar class="header-toolbar">
+    <div class="header-content">
+      <!-- Menu Button -->
+      <button mat-icon-button class="menu-button">
+        <mat-icon>menu</mat-icon>
+      </button>
+
+      <!-- Logo -->
+      <div class="logo" (click)="goHome()">
+        <h2>Logo</h2>
+      </div>
+
+      <!-- Search Bar -->
+      <div class="search-container">
+        <mat-form-field appearance="outline" class="search-field">
+          <input matInput placeholder="Search products...">
+          <mat-icon matSuffix>search</mat-icon>
+        </mat-form-field>
+      </div>
+
+      <!-- Navigation Links -->
+      <div class="nav-links">
+        <a mat-button routerLink="/page1">page></a>
+        <a mat-button routerLink="/page2">page></a>
+        <a mat-button routerLink="/page3">page></a>
+        <a mat-button routerLink="/page4">page></a>
+      </div>
+
+      <!-- Right Side Controls -->
+      <div class="header-controls">
+        <!-- Language Selector -->
+        <mat-select [(value)]="selectedLanguage" class="language-selector">
+          <mat-option value="EN">EN</mat-option>
+          <mat-option value="FR">FR</mat-option>
+        </mat-select>
+
+        <!-- Sign Up Button -->
+        <button mat-raised-button color="primary" class="signup-btn" (click)="onSignUpClick()">
+          Sign up
+        </button>
+
+        <!-- Cart -->
+        <button mat-icon-button class="cart-button" (click)="onCartClick()">
+          <mat-icon>shopping_cart</mat-icon>
+          <span class="cart-text">cart</span>
+        </button>
+
+        <!-- Filter -->
+        <button mat-icon-button class="filter-button" (click)="showFilterOptions()">
+          <mat-icon>filter_list</mat-icon>
+          <span class="filter-text">Filter</span>
+        </button>
+      </div>
+    </div>
+  </mat-toolbar>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    
+    <!-- Category Header -->
+    <div class="category-header">
+      <div class="category-info">
+        <h1 class="category-title">{{ categoryName }}</h1>
+        <p class="products-count">{{ products.length }} products found</p>
+      </div>
+
+      <!-- Sorting Options -->
+      <div class="sorting-options">
+        <mat-form-field appearance="outline" class="sort-field">
+          <mat-label>Sort by</mat-label>
+          <mat-select [(value)]="sortBy" (selectionChange)="onSortChange($event.value)">
+            <mat-option value="name">Name</mat-option>
+            <mat-option value="price">Price</mat-option>
+            <mat-option value="rating">Rating</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <button 
+          mat-icon-button 
+          (click)="toggleSortOrder()"
+          [title]="sortOrder === 'asc' ? 'Sort Descending' : 'Sort Ascending'"
+          class="sort-order-btn"
+        >
+          <mat-icon>{{ sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+        </button>
+      </div>
+    </div>
+
+    <!-- Products Grid -->
+    <div class="products-grid">
+      
+      <!-- Product Card -->
+      <mat-card 
+        *ngFor="let product of products" 
+        class="product-card"
+        [class.out-of-stock]="!product.inStock"
+        (click)="onProductClick(product)"
+      >
+        
+        <!-- Product Image -->
+        <div class="product-image">
+          <div class="image-placeholder">
+            <mat-icon class="product-icon">inventory_2</mat-icon>
+          </div>
+          
+          <!-- Out of Stock Badge -->
+          <div *ngIf="!product.inStock" class="stock-badge out-of-stock-badge">
+            Out of Stock
+          </div>
+          
+          <!-- Rating -->
+          <div class="rating-badge">
+            <mat-icon class="star-icon">star</mat-icon>
+            <span>{{ product.rating }}</span>
+          </div>
+        </div>
+
+        <!-- Product Info -->
+        <mat-card-content class="product-info">
+          <h3 class="product-name">{{ product.name }}</h3>
+          <p class="product-price">${{ product.price.toFixed(2) }}</p>
+          <p class="product-seller">by {{ product.seller }}</p>
+        </mat-card-content>
+
+        <!-- Product Actions -->
+        <mat-card-actions class="product-actions">
+          <button 
+            mat-raised-button 
+            color="primary" 
+            class="add-to-cart-btn"
+            [disabled]="!product.inStock"
+            (click)="$event.stopPropagation()"
+          >
+            {{ product.inStock ? 'Add to Cart' : 'Unavailable' }}
+          </button>
+        </mat-card-actions>
+
+      </mat-card>
+
+      <!-- Empty State -->
+      <div *ngIf="products.length === 0" class="empty-state">
+        <mat-icon class="empty-icon">inventory_2</mat-icon>
+        <h3>No products found</h3>
+        <p>Try adjusting your search or browse other categories</p>
+        <button mat-raised-button color="primary" (click)="goHome()">
+          Browse All Categories
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Load More Button (for pagination) -->
+    <div *ngIf="products.length > 0" class="load-more-section">
+      <button mat-raised-button class="load-more-btn">
+        Load More Products
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <h3>Footer</h3>
+      <div class="footer-links">
+        <a href="#" mat-button>About Us</a>
+        <a href="#" mat-button>Contact</a>
+        <a href="#" mat-button>Privacy Policy</a>
+        <a href="#" mat-button>Terms of Service</a>
+      </div>
+      <p class="footer-copyright">© 2024 Your Marketplace. All rights reserved.</p>
+    </div>
+  </footer>
+
+</div>

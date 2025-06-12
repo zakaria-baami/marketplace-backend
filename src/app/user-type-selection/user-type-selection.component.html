@@ -1,0 +1,74 @@
+<!-- src/app/user-type-selection/user-type-selection.component.html -->
+<div class="user-type-container">
+  
+  <!-- Main Content -->
+  <div class="main-content">
+    
+    <!-- Logo Section -->
+    <div class="logo-section">
+      <h1 class="logo-text">Logo</h1>
+    </div>
+
+    <!-- User Type Selection -->
+    <div class="selection-section">
+      <div class="selection-buttons">
+        
+        <!-- Creator/Seller Button -->
+        <button 
+          mat-raised-button 
+          class="user-type-btn creator-btn"
+          (click)="selectCreator()"
+        >
+          <mat-icon class="btn-icon">store</mat-icon>
+          <span class="btn-text">Créateur</span>
+        </button>
+
+        <!-- Buyer Button -->
+        <button 
+          mat-raised-button 
+          class="user-type-btn buyer-btn"
+          (click)="selectBuyer()"
+        >
+          <mat-icon class="btn-icon">shopping_bag</mat-icon>
+          <span class="btn-text">Buyer</span>
+        </button>
+        
+      </div>
+
+      <!-- Optional description text -->
+      <div class="description-section">
+        <p class="description-text">
+          Choose your account type to get started with the best experience tailored for you.
+        </p>
+      </div>
+
+      <!-- Back button -->
+      <div class="back-section">
+        <button 
+          mat-button 
+          class="back-btn"
+          (click)="goBack()"
+        >
+          <mat-icon>arrow_back</mat-icon>
+          Back to Home
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <h3>Footer</h3>
+      <div class="footer-links">
+        <a href="#" mat-button>About Us</a>
+        <a href="#" mat-button>Contact</a>
+        <a href="#" mat-button>Privacy Policy</a>
+        <a href="#" mat-button>Terms of Service</a>
+      </div>
+      <p class="footer-copyright">© 2024 Your Marketplace. All rights reserved.</p>
+    </div>
+  </footer>
+
+</div>

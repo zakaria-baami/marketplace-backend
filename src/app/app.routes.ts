@@ -1,0 +1,29 @@
+import { Routes } from '@angular/router';
+import { HomeComponent } from './home/home.component';
+import { ProductDetailComponent } from './product-detail/product-detail.component';
+import { CartComponent } from './cart/cart.component';
+import { UserTypeSelectionComponent } from './user-type-selection/user-type-selection.component';
+import { PricingPlansComponent } from './pricing-plans/pricing-plans.component';
+import { BuyerRegistrationComponent } from './buyer-registration/buyer-registration.component';
+import { CategoryProductsComponent } from './category-products/category-products.component';
+import { LoginComponent } from './login/login.component';
+import { CreateStoreComponent } from './create-store/create-store.component';
+import { StoreTemplate1Component } from './store-template-1/store-template-1.component';
+import { StoreTemplate2Component } from './store-template-2/store-template-2.component';
+import { StoreTemplate3Component } from './store-template-3/store-template-3.component';
+
+export const routes: Routes = [
+  { path: '', component: HomeComponent },
+  { path: 'home', component: HomeComponent },
+  { path: 'product/:id', component: ProductDetailComponent },
+  { path: 'cart', component: CartComponent },
+  { path: 'signup', component: UserTypeSelectionComponent },
+  { path: 'pricing', component: PricingPlansComponent },
+  { path: 'register/buyer', component: BuyerRegistrationComponent },
+  { path: 'category/:category', component: CategoryProductsComponent },
+  { path: 'login', component: LoginComponent },
+  { path: 'create-store', component: CreateStoreComponent },
+  { path: 'template/1', component: StoreTemplate1Component },
+  { path: 'template/2', component: StoreTemplate2Component },
+  { path: 'template/3', component: StoreTemplate3Component }
+];

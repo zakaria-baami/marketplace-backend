@@ -1,0 +1,168 @@
+<!-- src/app/product-detail/product-detail.component.html -->
+<div class="product-detail-container">
+  <!-- Header (same as home) -->
+  <mat-toolbar class="header-toolbar">
+    <div class="header-content">
+      <!-- Menu Button -->
+      <button mat-icon-button class="menu-button">
+        <mat-icon>menu</mat-icon>
+      </button>
+
+      <!-- Logo -->
+      <div class="logo">
+        <h2>Logo</h2>
+      </div>
+
+      <!-- Search Bar -->
+      <div class="search-container">
+        <mat-form-field appearance="outline" class="search-field">
+          <input matInput placeholder="Search products...">
+          <mat-icon matSuffix>search</mat-icon>
+        </mat-form-field>
+      </div>
+
+      <!-- Navigation Links -->
+      <div class="nav-links">
+        <a mat-button routerLink="/page1">page></a>
+        <a mat-button routerLink="/page2">page></a>
+        <a mat-button routerLink="/page3">page></a>
+        <a mat-button routerLink="/page4">page></a>
+      </div>
+
+      <!-- Right Side Controls -->
+      <div class="header-controls">
+        <!-- Language Selector -->
+        <mat-select [(value)]="selectedLanguage" class="language-selector">
+          <mat-option value="EN">EN</mat-option>
+          <mat-option value="FR">FR</mat-option>
+        </mat-select>
+
+        <!-- Sign Up Button -->
+        <button mat-raised-button color="primary" class="signup-btn" (click)="onSignUpClick()">
+          Sign up
+        </button>
+
+        <!-- Cart -->
+        <button mat-icon-button class="cart-button" (click)="onCartClick()">
+          <mat-icon>shopping_cart</mat-icon>
+          <span class="cart-text">cart</span>
+        </button>
+
+        <!-- Filter -->
+        <button mat-icon-button class="filter-button">
+          <mat-icon>filter_list</mat-icon>
+          <span class="filter-text">Filter</span>
+        </button>
+      </div>
+    </div>
+  </mat-toolbar>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="content-wrapper">
+      
+      <!-- Left Sidebar -->
+      <aside class="sidebar">
+        <div class="filter-section">
+          <h3>Categories</h3>
+          <div class="category-filters">
+            <div 
+              *ngFor="let category of categories" 
+              class="category-filter-item"
+              (click)="onCategorySelect(category)"
+            >
+              <mat-checkbox class="category-checkbox">
+                {{ category.name }} ({{ category.count }})
+              </mat-checkbox>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Product Detail Content -->
+      <main class="product-content">
+        <div class="product-detail-wrapper">
+          
+          <!-- Product Images -->
+          <div class="product-images">
+            <!-- Main Image -->
+            <div class="main-image-container">
+              <div class="main-image-placeholder">
+                <mat-icon class="product-main-icon">inventory_2</mat-icon>
+              </div>
+              
+              <!-- Image Navigation Dots -->
+              <div class="image-dots">
+                <button 
+                  *ngFor="let image of product.images; let i = index"
+                  class="dot"
+                  [class.active]="i === currentImageIndex"
+                  (click)="selectImage(i)"
+                >
+                </button>
+              </div>
+            </div>
+
+            <!-- Store Name -->
+            <div class="store-info">
+              <mat-icon class="store-icon">store</mat-icon>
+              <span class="store-name">{{ product.storeName }}</span>
+            </div>
+          </div>
+
+          <!-- Product Information -->
+          <div class="product-info">
+            <h1 class="product-title">{{ product.name }}</h1>
+            <p class="product-price">${{ product.price.toFixed(2) }}</p>
+            
+            <div class="product-description">
+              <p>{{ product.description }}</p>
+            </div>
+
+            <!-- Product Options -->
+            <div class="product-options">
+              <div *ngFor="let option of product.options" class="option-group">
+                <label class="option-label">{{ option.label }}:</label>
+                <mat-select 
+                  [(value)]="selectedOptions[option.label]"
+                  (selectionChange)="onOptionChange(option.label, $event.value)"
+                  class="option-select"
+                >
+                  <mat-option *ngFor="let value of option.values" [value]="value">
+                    {{ value }}
+                  </mat-option>
+                </mat-select>
+              </div>
+            </div>
+
+            <!-- Add to Cart Button -->
+            <div class="add-to-cart-section">
+              <button 
+                mat-raised-button 
+                color="primary" 
+                class="add-to-cart-btn"
+                (click)="addToCart()"
+              >
+                add to cart
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <h3>Footer</h3>
+      <div class="footer-links">
+        <a href="#" mat-button>About Us</a>
+        <a href="#" mat-button>Contact</a>
+        <a href="#" mat-button>Privacy Policy</a>
+        <a href="#" mat-button>Terms of Service</a>
+      </div>
+      <p class="footer-copyright">© 2024 Your Marketplace. All rights reserved.</p>
+    </div>
+  </footer>
+</div>
